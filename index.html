@@ -12,18 +12,15 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" href="icon.png">
 <style>
-/* 布局：整屏都是镜面；按钮是浮在画面上的几块透明玻璃。
-   不用时玻璃缩回快门里消失，点一下画面再从快门里分出来 */
-@property --gr{syntax:'<length>';inherits:false;initial-value:26px}
+/* 布局：整屏都是镜面。画面只有一层，摄像头给什么就显示什么，中间不加任何效果。
+   按钮没有底板，直接浮在画面上；不用时淡出，点一下画面再出现 */
 :root{
   --ink:#0a0e0f;            /* 略偏青的黑 */
-  --fg:#f7fbfa;
+  --fg:#ffffff;
   --dim:#c3cfcc;
-  --mint:#7ff0cf;
+  --mint:#7ff0cf;           /* 唯一的强调色：只用在"开着"的东西上 */
   --lamp:#ffffff;           /* 补光用纯白，最亮 */
   --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",sans-serif;
-  --num:ui-rounded,"SF Pro Rounded",-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
-  --spring:cubic-bezier(.3,1.5,.5,1);
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -33,13 +30,13 @@ body{
   position:fixed;inset:0;color:var(--fg);font:15px/1.4 var(--ui);
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
   -webkit-tap-highlight-color:transparent;
-  /* 玻璃上的字和图标：默认白色；背后画面亮时换成深色（见 .ink） */
-  --on:var(--fg); --act:var(--mint);
-  --track:rgba(255,255,255,.36);
-  --shade:0 0 1px rgba(0,0,0,.30),0 1px 4px rgba(0,0,0,.38);
-  --ishade:drop-shadow(0 1px 2.5px rgba(0,0,0,.45));
+  /* 按钮的颜色：平时白色带一点阴影，在任何画面上都看得清；补光的白底上换成深色 */
+  --on:#ffffff; --act:var(--mint); --track:rgba(255,255,255,.42);
+  --shade:0 0 1px rgba(0,0,0,.55),0 1px 3px rgba(0,0,0,.5),0 2px 10px rgba(0,0,0,.3);
+  --ishade:drop-shadow(0 0 1px rgba(0,0,0,.5)) drop-shadow(0 1px 3px rgba(0,0,0,.45));
+  --lift:0 0 0 .5px rgba(0,0,0,.2),0 1px 5px rgba(0,0,0,.4);
 }
-body.lamp{ --on:#0a0e0f; --act:#0a7d68; --track:rgba(10,14,15,.16); --shade:none; --ishade:none; }
+body.lamp{ --on:#0a0e0f; --act:#0a7d68; --track:rgba(10,14,15,.18); --shade:none; --ishade:none; --lift:none; }
 
 #frame{position:fixed;inset:0;background:#000;transition:background .25s}
 #stage{
@@ -49,19 +46,16 @@ body.lamp{ --on:#0a0e0f; --act:#0a7d68; --track:rgba(10,14,15,.16); --shade:none
 #pan{position:absolute;inset:0;transform-origin:50% 50%}
 video{display:block;width:100%;height:100%;object-fit:cover}
 video.mirror{transform:scaleX(-1)}
-.boost video{filter:brightness(1.4) contrast(1.08)}
-/* 玻璃边缘里的那份画面，颜色和玻璃中间一样略微更鲜，里外才是同一块玻璃 */
-.lens video{filter:saturate(1.18)}
-.boost .lens video{filter:brightness(1.4) contrast(1.08) saturate(1.18)}
-/* 定格的那一下，画面像快门一样暗一瞬 */
-#blink{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none}
-#blink.go{animation:blink .24s ease-out}
-@keyframes blink{0%{opacity:0}30%{opacity:.5}100%{opacity:0}}
+/* 提亮：在画面上面盖一层只调亮度的透明片。它作用在已经放大好的画面上，所以不会损失清晰度；不开的时候这一层不存在 */
+#boostLayer{
+  position:absolute;inset:0;pointer-events:none;
+  -webkit-backdrop-filter:brightness(1.4) contrast(1.08);backdrop-filter:brightness(1.4) contrast(1.08);
+}
 
 /* 补光：画面缩成一个窗口，其余整块屏幕发白光。强光时窗口更小，白光面积更大 */
 .lamp #frame{background:var(--lamp)}
 .lamp #stage{
-  inset:calc(env(safe-area-inset-top,0px) + 64px) 30px calc(env(safe-area-inset-bottom,0px) + 212px);
+  inset:calc(env(safe-area-inset-top,0px) + 64px) 30px calc(env(safe-area-inset-bottom,0px) + 200px);
   border-radius:34px;
 }
 .lamp2 #stage{
@@ -69,187 +63,78 @@ video.mirror{transform:scaleX(-1)}
   border-radius:40px;
 }
 
-/* ---------- 液态玻璃 ---------- */
-/* 一块玻璃从下到上有五层：
-   1 玻璃本体：通透，背后的画面只略微柔化、颜色略微更鲜
-   2 手指按着的地方从里面亮起来的光
-   3 边缘折光：另一份同样的摄像头画面，稍微放大，只在边上露出一圈
-   4 字和图标
-   5 最外面那条细细的高光
-   全部交给手机的图形系统去合成，页面自己不逐帧计算 */
-.glass{
-  position:relative;border-radius:999px;
-  color:var(--on);text-shadow:var(--shade);
-  background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,.03) 40%,rgba(255,255,255,.02) 62%,rgba(255,255,255,.10));
-  -webkit-backdrop-filter:blur(2px) saturate(118%);backdrop-filter:blur(2px) saturate(118%);
-  box-shadow:0 0 0 .5px rgba(0,0,0,.10),0 9px 24px rgba(0,0,0,.20),0 2px 5px rgba(0,0,0,.15);
-  transition:color .3s,background-color .35s,box-shadow .35s;
-}
-/* 2 手指按着的地方亮起来，光从指尖向四周漫开 */
-.glass::before{
-  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;
-  background:radial-gradient(var(--gr,26px) circle at var(--gx,50%) var(--gy,50%),rgba(255,255,255,.42),rgba(255,255,255,.12) 55%,rgba(255,255,255,0));
-  transition:opacity .45s,--gr .5s cubic-bezier(.2,.7,.3,1);
-}
-.glass.pressed::before{opacity:1;--gr:130px;transition:opacity .12s,--gr .5s cubic-bezier(.2,.7,.3,1)}
-/* 3 边缘折光的那一圈，上面再罩一层斜面受光：左上偏冷，右下偏暖 */
-.lens{
-  position:absolute;inset:0;border-radius:inherit;overflow:hidden;pointer-events:none;
-  -webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
-}
-.lens::after{
-  content:"";position:absolute;inset:0;
-  background:
-    linear-gradient(135deg,rgba(232,244,255,.36),rgba(255,255,255,0) 30%,rgba(255,255,255,0) 70%,rgba(255,238,222,.24)),
-    linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,0) 45%,rgba(255,255,255,.14));
-}
-.world{position:absolute}
-.panc{position:absolute;inset:0;transform-origin:50% 50%}
-/* 5 边缘高光：一条细线，左上最亮，右下有一道回光。里面那块渐变会沿着边滑动 */
-.rim{
-  position:absolute;inset:0;border-radius:inherit;padding:1.25px;overflow:hidden;pointer-events:none;
-  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
-  -webkit-mask-composite:xor;mask-composite:exclude;
-}
-.rim i{position:absolute;left:50%;top:50%}
-/* 背后画面亮（比如正对着牙齿）：玻璃略微提亮，边缘多一条极细的暗线，免得白玻璃融进白背景 */
-.glass.bright{
-  background-color:rgba(255,255,255,.20);
-  box-shadow:0 0 0 .5px rgba(0,0,0,.17),0 10px 26px rgba(0,0,0,.17),0 2px 5px rgba(0,0,0,.12);
-}
-/* 白光背景上的玻璃：浅色的薄片，不需要折光 */
-.lamp .glass{
-  background:linear-gradient(180deg,rgba(10,14,15,.02),rgba(10,14,15,.06));
-  -webkit-backdrop-filter:none;backdrop-filter:none;
-  box-shadow:inset 0 1.5px 1px #fff,inset 0 0 0 1px rgba(10,14,15,.07),0 8px 20px rgba(10,14,15,.10);
-}
-.lamp .rim,.lamp .lens,.settling .lens{display:none}
-
+/* ---------- 顶部的两句话 ---------- */
 #top{
   position:absolute;left:16px;right:16px;top:calc(env(safe-area-inset-top,0px) + 12px);
   display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;
 }
-.chip{
-  padding:7px 14px;font-size:13px;letter-spacing:.01em;transition:opacity .35s,color .3s;
-  -webkit-backdrop-filter:blur(10px) saturate(170%);backdrop-filter:blur(10px) saturate(170%);
-  box-shadow:inset 0 .75px 0 rgba(255,255,255,.7),inset 0 0 0 .5px rgba(255,255,255,.22),0 6px 18px rgba(0,0,0,.18);
-}
-#hint{background:linear-gradient(180deg,rgba(255,255,255,.16),rgba(255,255,255,.04)),rgba(12,16,17,.30)}
+.note{padding:6px 13px;border-radius:999px;font-size:13px;background:rgba(0,0,0,.46);color:#fff}
+#hint{transition:opacity .3s}
 .quiet #hint,#hint.gone{opacity:0}
-#state{color:#06352c;text-shadow:none;font-weight:600;
-  background:linear-gradient(180deg,rgba(255,255,255,.5),rgba(255,255,255,0) 55%),rgba(127,240,207,.88)}
-#state:not([hidden]){animation:pop .4s var(--spring)}
-@keyframes pop{0%{opacity:0;transform:translateY(-8px) scale(.85)}100%{opacity:1;transform:none}}
-#diag{font-size:11px;line-height:1.5;border-radius:16px;text-align:center;max-width:100%;
-  background:rgba(12,16,17,.62);font-variant-numeric:tabular-nums}
+#state{background:var(--mint);color:#06352c;font-weight:600}
+#diag{font-size:11px;line-height:1.5;border-radius:14px;text-align:center;font-variant-numeric:tabular-nums}
 
+/* ---------- 底部的按钮 ---------- */
+/* 按钮出现时，画面最下面有一层很淡的由浅到深的阴影，白色的按钮在白牙齿前面也看得清；按钮收起后它也跟着消失 */
+#shade{
+  position:absolute;left:0;right:0;bottom:0;height:calc(env(safe-area-inset-bottom,0px) + 250px);pointer-events:none;
+  background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.08) 34%,rgba(0,0,0,.22) 62%,rgba(0,0,0,.38));
+  transition:opacity .3s;
+}
+.quiet #shade,.lamp #shade{opacity:0}
 #bar{
-  position:absolute;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
-  display:grid;gap:12px;visibility:hidden;
+  position:absolute;left:18px;right:18px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
+  display:grid;gap:8px;color:var(--on);text-shadow:var(--shade);
+  transition:opacity .3s,visibility 0s;
 }
-.quiet #bar{pointer-events:none}
+.quiet #bar{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .3s,visibility 0s .3s}
 
-/* ---------- 放大滑杆 ---------- */
-#zoomrow{display:flex;align-items:center;gap:10px;padding:4px 18px 4px 12px}
-#zoomOut{
-  position:relative;flex:none;min-width:50px;text-align:right;transform-origin:100% 50%;
-  font:600 16px/1 var(--num);font-variant-numeric:tabular-nums;letter-spacing:.01em;transition:color .3s;
-}
-#zoomOut.snap{animation:snap .28s ease-out}
-@keyframes snap{0%{transform:scale(1)}40%{transform:scale(1.14)}100%{transform:scale(1)}}
-.rail{position:relative;flex:1;min-width:0;display:flex;transition:color .3s;--t:0}
-/* 刻度：1、2、5、10、20、50、100 倍，像镜头对焦环上的标记。滑到刻度附近会轻轻吸住 */
-.ticks{position:absolute;inset:0;pointer-events:none}
-.ticks i{
-  position:absolute;top:calc(50% + 9px);left:calc(18px + (100% - 36px) * var(--k));
-  width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:currentColor;opacity:.6;
-}
+#zoomrow{display:flex;align-items:center;gap:12px;padding:0 6px}
+#zoomOut{flex:none;min-width:50px;text-align:right;font:600 16px/1 var(--ui);font-variant-numeric:tabular-nums}
 input[type=range]{
-  -webkit-appearance:none;appearance:none;flex:1;min-width:0;height:42px;margin:0;background:transparent;
-  color:inherit;touch-action:none;
+  -webkit-appearance:none;appearance:none;flex:1;min-width:0;height:44px;margin:0;background:transparent;
+  color:inherit;touch-action:none;--t:0;
 }
 input[type=range]::-webkit-slider-runnable-track{
-  height:4px;border-radius:2px;
-  background:linear-gradient(90deg,currentColor calc(18px + (100% - 36px) * var(--t)),var(--track) 0);
+  height:3px;border-radius:2px;box-shadow:var(--lift);
+  background:linear-gradient(90deg,currentColor calc(13px + (100% - 26px) * var(--t)),var(--track) 0);
 }
-/* 系统自带的旋钮只负责接住手指，看不见；看得见的旋钮是下面的 .knob */
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:36px;height:42px;margin-top:-19px;border:0;background:transparent}
-input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--track)}
-input[type=range]::-moz-range-progress{height:4px;border-radius:2px;background:currentColor}
-input[type=range]::-moz-range-thumb{width:36px;height:42px;border:0;background:transparent}
-/* 旋钮：平时是一颗实心白色胶囊；手指按住时变成一小块透明玻璃，透过它看到的滑轨被放大 */
-.knob{
-  position:absolute;top:50%;left:calc(18px + (100% - 36px) * var(--t));
-  width:38px;height:24px;margin:-12px 0 0 -19px;border-radius:12px;pointer-events:none;
-  background:linear-gradient(180deg,rgba(255,255,255,.24),rgba(255,255,255,.06));
-  box-shadow:inset 0 1px .5px rgba(255,255,255,.95),inset 0 -1px .5px rgba(255,255,255,.4),
-             inset 0 0 0 .75px rgba(255,255,255,.35),0 4px 12px rgba(0,0,0,.28);
-  transition:transform .4s var(--spring);
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:26px;height:26px;margin-top:-11.5px;border-radius:50%;
+  background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.14),0 2px 8px rgba(0,0,0,.35);
 }
-.knob::before{
-  content:"";position:absolute;left:4px;right:4px;top:50%;height:7px;margin-top:-3.5px;border-radius:3.5px;
-  background:linear-gradient(90deg,currentColor 50%,var(--track) 50%);
-}
-.knob::after{
-  content:"";position:absolute;inset:0;border-radius:inherit;
-  background:linear-gradient(180deg,#ffffff,#edf1f0);
-  box-shadow:inset 0 1px 0 #fff,0 0 0 .5px rgba(0,0,0,.10);
-  transition:opacity .22s;
-}
-.rail.grab .knob{transform:scale(1.42,1.3)}
-.rail.grab .knob::after{opacity:0}
+input[type=range]::-moz-range-track{height:3px;border-radius:2px;background:var(--track)}
+input[type=range]::-moz-range-progress{height:3px;border-radius:2px;background:currentColor}
+input[type=range]::-moz-range-thumb{width:26px;height:26px;border:0;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.35)}
 
-/* ---------- 按钮 ---------- */
-.tools{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
-.group{display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:5px}
+.tools{display:grid;grid-template-columns:1fr 1fr auto 1fr 1fr;align-items:center;justify-items:center}
 .tool{
-  position:relative;isolation:isolate;display:grid;justify-items:center;gap:3px;min-width:0;padding:8px 2px 7px;
-  border:0;border-radius:999px;background:transparent;
-  color:inherit;text-shadow:inherit;font:500 11.5px/1.2 var(--ui);letter-spacing:.02em;
-  transition:color .3s,transform .3s var(--spring);
+  display:grid;justify-items:center;gap:4px;min-width:58px;padding:8px 4px;
+  border:0;background:transparent;color:inherit;text-shadow:inherit;
+  font:500 12px/1.2 var(--ui);letter-spacing:.02em;transition:color .2s,opacity .12s;
 }
 .tool svg{
-  width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;
-  filter:var(--ishade);transition:transform .55s var(--spring);
+  width:25px;height:25px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;
+  filter:var(--ishade);
 }
 .tool svg .fill{fill:currentColor;stroke:none}
-.tool svg.bump{animation:bump .45s var(--spring)}
-@keyframes bump{0%{transform:scale(1)}35%{transform:scale(1.24)}100%{transform:scale(1)}}
-.tool:active{transform:scale(1.08)}
-/* 按钮底下的那片小玻璃：手指按着时浮起一片透明的；功能开着时是薄荷色的，弹出来 */
-.tool::before{
-  content:"";position:absolute;inset:0;border-radius:inherit;z-index:-1;opacity:0;transform:scale(.7);
-  background:rgba(255,255,255,.16);box-shadow:inset 0 1px .5px rgba(255,255,255,.5);
-  transition:opacity .2s,transform .4s var(--spring);
-}
-.tool:active::before{opacity:1;transform:none}
-/* 背后画面亮的地方，字和图标换成深色，和苹果的玻璃一样会自己变。每个按钮各看各的背后 */
-.ink{ --on:#0a0e0f; --track:rgba(10,14,15,.22); --shade:none; --ishade:none; color:var(--on); text-shadow:none }
-.tool[aria-pressed=true]{color:#06352c;text-shadow:none;--ishade:none}
-.tool[aria-pressed=true]::before{
-  opacity:1;transform:none;
-  background:linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,.05) 55%,rgba(0,70,50,.05)),rgba(98,232,196,.84);
-  box-shadow:inset 0 1px .5px rgba(255,255,255,.95),inset 0 -1px .5px rgba(255,255,255,.35),
-             inset 0 0 0 .75px rgba(205,255,241,.6),0 3px 12px rgba(20,120,95,.30);
-}
-.lamp .tool[aria-pressed=true]{color:var(--act)}
-.lamp .tool[aria-pressed=true]::before{background:rgba(10,125,104,.12);box-shadow:inset 0 0 0 1px rgba(10,125,104,.30)}
-.lamp .tool:active::before{background:rgba(10,14,15,.07);box-shadow:none}
+.tool:active{opacity:.5}
+.tool[aria-pressed=true]{color:var(--act)}
 
-/* 快门：玻璃圆环里一颗白色圆片 */
+/* 快门：一个圆环套一颗圆片 */
 #freeze{
-  width:76px;height:76px;padding:0;border:0;display:grid;place-items:center;font:600 13px/1 var(--ui);letter-spacing:.02em;
+  width:70px;height:70px;margin:0 10px;padding:0;border-radius:50%;
+  border:3px solid var(--on);background:transparent;box-shadow:var(--lift);
+  display:grid;place-items:center;font:600 13px/1 var(--ui);letter-spacing:.02em;
 }
 #freeze span{
-  position:relative;display:grid;place-items:center;width:58px;height:58px;border-radius:50%;
-  color:#0a0e0f;text-shadow:none;
-  background:linear-gradient(180deg,#ffffff,#e9eeed);
-  box-shadow:inset 0 1px 0 #fff,inset 0 -1px 1px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.25);
-  transition:background .2s,transform .35s var(--spring);
+  display:grid;place-items:center;width:56px;height:56px;border-radius:50%;
+  background:var(--on);color:#0a0e0f;text-shadow:none;transition:transform .15s,background .2s;
 }
-#freeze:active span{transform:scale(.88)}
-.lamp #freeze span{background:#0a0e0f;color:#fff;box-shadow:0 2px 8px rgba(10,14,15,.25)}
-#freeze[aria-pressed=true] span{background:linear-gradient(180deg,#b6f8e4,#63dcb9);color:#06352c}
+.lamp #freeze span{color:#fff}
+#freeze:active span{transform:scale(.9)}
+#freeze[aria-pressed=true] span{background:var(--act);color:#06352c}
+.lamp #freeze[aria-pressed=true] span{color:#fff}
 
 button{touch-action:manipulation;cursor:pointer}
 button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-offset:3px}
@@ -264,62 +149,49 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
   border:0;border-radius:999px;padding:13px 28px;background:var(--mint);color:var(--ink);
   font:600 16px/1 var(--ui);
 }
-/* 系统里开了"减弱动态效果"：不弹、不滑、不闪 */
 @media (prefers-reduced-motion:reduce){
-  #stage,#frame,.glass,.glass::before,.tool,.tool::before,.tool svg,.chip,#freeze span,.knob,.knob::after{transition:none}
-  #blink.go,#state:not([hidden]),#zoomOut.snap,.tool svg.bump{animation:none}
-}
-/* 系统里开了"降低透明度"：玻璃换成不透明的底，字始终看得清 */
-@media (prefers-reduced-transparency:reduce){
-  .glass{background-color:rgba(24,30,32,.80);-webkit-backdrop-filter:none;backdrop-filter:none}
-  .glass.bright{background-color:rgba(244,247,246,.88)}
-  .lens{display:none}
+  #stage,#frame,#bar,.quiet #bar,#shade,#hint,.tool,#freeze span{transition:none}
 }
 </style>
 </head>
 <body class="quiet">
 <div id="frame">
-  <div id="stage"><div id="pan"><video id="v" class="mirror" playsinline autoplay muted></video></div></div>
-  <div id="blink"></div>
+  <div id="stage">
+    <div id="pan"><video id="v" class="mirror" playsinline autoplay muted></video></div>
+    <div id="boostLayer" hidden></div>
+  </div>
 </div>
 
 <div id="top">
-  <span class="chip glass" id="hint">双指放大 · 拖动移动 · 点一下画面收起按钮</span>
-  <span class="chip glass" id="state" hidden>已定格</span>
-  <span class="chip" id="diag" hidden></span>
+  <span class="note" id="hint">双指放大 · 拖动移动 · 点一下画面收起按钮</span>
+  <span class="note" id="state" hidden>已定格</span>
+  <span class="note" id="diag" hidden></span>
 </div>
 
+<div id="shade"></div>
 <div id="bar">
-  <div class="glass live" id="zoomrow">
-    <div class="rail">
-      <div class="ticks" aria-hidden="true"><i style="--k:0"></i><i style="--k:.1505"></i><i style="--k:.3495"></i><i style="--k:.5"></i><i style="--k:.6505"></i><i style="--k:.8495"></i><i style="--k:1"></i></div>
-      <input id="zoom" type="range" min="0" max="1" step="0.001" value="0" aria-label="放大倍数">
-      <i class="knob" aria-hidden="true"></i>
-    </div>
+  <div id="zoomrow">
+    <input id="zoom" type="range" min="0" max="1" step="0.001" value="0" aria-label="放大倍数">
     <output id="zoomOut" for="zoom" aria-live="polite">1.0×</output>
   </div>
   <div class="tools">
-    <div class="group glass live" id="groupL">
-      <button class="tool" id="lamp" type="button" aria-pressed="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.9"/><path d="M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.35 5.35l1.65 1.65M17 17l1.65 1.65M5.35 18.65 7 17M17 7l1.65-1.65"/></svg>
-        <span id="lampLabel">补光</span>
-      </button>
-      <button class="tool" id="boost" type="button" aria-pressed="false">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.3"/><path class="fill" d="M12 5.6a6.4 6.4 0 0 1 0 12.8z"/></svg>
-        <span>提亮</span>
-      </button>
-    </div>
-    <button id="freeze" class="glass live" type="button" aria-pressed="false" aria-label="定格画面"><span id="freezeLabel">定格</span></button>
-    <div class="group glass live" id="groupR">
-      <button class="tool" id="reset" type="button">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.7 6v4.6h4.6"/><path d="M5.6 14.5a7 7 0 1 0 1.65-7.25L3.7 10.6"/></svg>
-        <span>还原</span>
-      </button>
-      <button class="tool" id="flip" type="button">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.6 5.8v4.6H16M3.4 18.2v-4.6H8"/><path d="M5.4 9.7a7 7 0 0 1 11.6-2.6l3.6 3.3M3.4 13.6 7 17a7 7 0 0 0 11.6-2.7"/></svg>
-        <span id="flipLabel">后置</span>
-      </button>
-    </div>
+    <button class="tool" id="lamp" type="button" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.9"/><path d="M12 2.6v2.3M12 19.1v2.3M2.6 12h2.3M19.1 12h2.3M5.35 5.35l1.65 1.65M17 17l1.65 1.65M5.35 18.65 7 17M17 7l1.65-1.65"/></svg>
+      <span id="lampLabel">补光</span>
+    </button>
+    <button class="tool" id="boost" type="button" aria-pressed="false">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.3"/><path class="fill" d="M12 5.6a6.4 6.4 0 0 1 0 12.8z"/></svg>
+      <span>提亮</span>
+    </button>
+    <button id="freeze" type="button" aria-pressed="false" aria-label="定格画面"><span id="freezeLabel">定格</span></button>
+    <button class="tool" id="reset" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.7 6v4.6h4.6"/><path d="M5.6 14.5a7 7 0 1 0 1.65-7.25L3.7 10.6"/></svg>
+      <span>还原</span>
+    </button>
+    <button class="tool" id="flip" type="button">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.6 5.8v4.6H16M3.4 18.2v-4.6H8"/><path d="M5.4 9.7a7 7 0 0 1 11.6-2.6l3.6 3.3M3.4 13.6 7 17a7 7 0 0 0 11.6-2.7"/></svg>
+      <span id="flipLabel">后置</span>
+    </button>
   </div>
 </div>
 
@@ -332,33 +204,19 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
 <script>
 (function(){
   'use strict';
-  var VER = 8;
+  var VER = 9;
   var $ = function(id){ return document.getElementById(id); };
   var body = document.body;
   var v = $('v'), stage = $('stage'), pan = $('pan'), bar = $('bar');
-  var zoomEl = $('zoom'), zoomOut = $('zoomOut'), hint = $('hint'), stateChip = $('state');
-  var rail = document.querySelector('#zoomrow .rail');
+  var zoomEl = $('zoom'), zoomOut = $('zoomOut'), hint = $('hint');
   var ZMAX = 100;                 /* 100 倍时屏幕上只剩十几个像素点，再大没有意义 */
   var LOGMAX = Math.log(ZMAX);
-  var TICKS = [1, 2, 5, 10, 20, 50, 100].map(function(x){ return Math.log(x) / LOGMAX; });
   var z = 1, tx = 0, ty = 0;
-  var facing = 'user', mirrored = true, stream = null, track = null;
-  var frozen = false, torch = false, canTorch = false, starting = false, boostOn = false;
+  var facing = 'user', stream = null, track = null;
+  var frozen = false, torch = false, canTorch = false, starting = false;
   var lampLevel = 0;              /* 0 关，1 补光，2 强光 */
   var calm = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   function clamp(n, lo, hi){ return Math.max(lo, Math.min(hi, n)); }
-
-  /* 轻轻震一下。iPhone 的网页只有拨动开关时才会震，所以藏了一个看不见的开关，需要震的时候拨它一下。
-     不支持的手机上什么都不会发生 */
-  var hapticLabel = null;
-  try {
-    hapticLabel = document.createElement('label');
-    hapticLabel.hidden = true; hapticLabel.setAttribute('aria-hidden', 'true');
-    var hapticSwitch = document.createElement('input');
-    hapticSwitch.type = 'checkbox'; hapticSwitch.setAttribute('switch', ''); hapticSwitch.tabIndex = -1;
-    hapticLabel.appendChild(hapticSwitch); body.appendChild(hapticLabel);
-  } catch (_) { hapticLabel = null; }
-  function haptic(){ try { if (hapticLabel) hapticLabel.click(); } catch (_) {} }
 
   /* ================= 镜面：放大与移动 ================= */
   var box = null, painting = 0, shownZoom = '';
@@ -377,8 +235,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
     if (label !== shownZoom) { zoomOut.textContent = shownZoom = label; }
     var s = Math.log(z) / LOGMAX;          /* 滑杆按倍数均匀分布：1、3、10、30、100 间隔相等 */
     zoomEl.value = s;
-    rail.style.setProperty('--t', s.toFixed(4));   /* 滑杆左边亮起的一段，以及旋钮的位置 */
-    if (!quiet) syncClones();
+    zoomEl.style.setProperty('--t', s.toFixed(4));   /* 滑杆左边亮起的一段 */
   }
   /* 每一帧屏幕最多重画一次，手指动得再快也不会堆积 */
   function apply(){
@@ -387,7 +244,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
     tx = clamp(tx, -mx, mx); ty = clamp(ty, -my, my);
     if (!painting) painting = requestAnimationFrame(paint);
   }
-  /* 以 (cx,cy) 为中心缩放，坐标相对镜面中心。smooth 时用 0.22 秒滑过去，玻璃里的画面跟着一起动 */
+  /* 以 (cx,cy) 为中心缩放，坐标相对镜面中心。smooth 时用 0.22 秒滑过去 */
   var tw = null;
   function tweenStep(now){
     if (!tw) return;
@@ -418,322 +275,22 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
     try { localStorage.setItem('mirrorHintSeen', '1'); } catch (_) {}
   }
 
-  /* ================= 玻璃按钮 ================= */
-  /* 四块玻璃：滑杆、左边两个按钮、快门、右边两个按钮。出现时都从快门的位置分出来。
-     这里只在玻璃出现、收起、被按下的那零点几秒里动一动位置；玻璃停稳之后页面什么都不算，全靠手机自己合成 */
-  var parts = [$('zoomrow'), $('groupL'), $('freeze'), $('groupR')];
-  var N = parts.length, HUB = 2;
-  var LENS = 10;                  /* 边缘折光：边上那一圈显示的是往里 10 像素处的画面 */
-  var RING = 11;                  /* 折光那一圈有多宽 */
-  function Spring(){ this.v = 0; this.vel = 0; this.t = 0; }
-  Spring.prototype.step = function(dt, k, c){
-    this.vel += (k * (this.t - this.v) - c * this.vel) * dt;
-    this.v += this.vel * dt;
-  };
-  Spring.prototype.still = function(){
-    return Math.abs(this.t - this.v) < 0.002 && Math.abs(this.vel) < 0.02;
-  };
-  var show = [], press = [], rest = [], bump = [], drawn = [], mag = [], maskKey = [], dir = [], span = [];
-  var lenses = [], worlds = [], pancs = [], clones = [], shines = [];
-  parts.forEach(function(el){
-    show.push(new Spring()); press.push(new Spring());
-    rest.push(null); bump.push(0.05); drawn.push(''); mag.push([1, 1]); maskKey.push(''); dir.push([0, 0]); span.push(0);
-    /* 每块玻璃里放一份同样的摄像头画面，只在边缘那一圈露出来 */
-    var lens = document.createElement('div'), world = document.createElement('div'), pc = document.createElement('div');
-    var c = document.createElement('video');
-    lens.className = 'lens'; lens.setAttribute('aria-hidden', 'true');
-    world.className = 'world'; pc.className = 'panc';
-    c.muted = true; c.defaultMuted = true; c.playsInline = true; c.tabIndex = -1;
-    c.setAttribute('muted', ''); c.setAttribute('playsinline', '');
-    c.className = 'mirror';
-    pc.appendChild(c); world.appendChild(pc); lens.appendChild(world);
-    el.insertBefore(lens, el.firstChild);
-    /* 最外面那条高光 */
-    var rim = document.createElement('div'), shine = document.createElement('i');
-    rim.className = 'rim'; rim.setAttribute('aria-hidden', 'true'); rim.appendChild(shine);
-    el.appendChild(rim);
-    lenses.push(lens); worlds.push(world); pancs.push(pc); clones.push(c); shines.push(shine);
-  });
-  var quiet = true, raf = 0, last = 0, stagger = [], pressed = -1, grabbing = false;
-  /* 字和图标所在的每一小块：滑杆、倍数、四个按钮。各自按背后的明暗决定用白字还是深色字 */
-  var spots = [rail, zoomOut, $('lamp'), $('boost'), $('reset'), $('flip')]
-    .map(function(el){ return { el: el, x0: 0, y0: 0, x1: 0, y1: 0, on: false }; });
-  var brightOn = [false, false, false, false];
-
-  /* 边缘那一圈的形状：贴着玻璃的边，往里逐渐变淡；玻璃轮廓以外一点都不露 */
-  function ringMask(w, h){
-    try {
-      var d = Math.min(window.devicePixelRatio || 1, 3), c = document.createElement('canvas');
-      c.width = Math.max(1, Math.round(w * d)); c.height = Math.max(1, Math.round(h * d));
-      var x = c.getContext('2d'), r = Math.min(w, h) / 2;
-      x.scale(d, d); x.strokeStyle = '#fff';
-      var outline = function(){
-        x.beginPath(); x.moveTo(r, 0); x.lineTo(w - r, 0); x.arc(w - r, r, r, -Math.PI / 2, Math.PI / 2);
-        x.lineTo(r, h); x.arc(r, r, r, Math.PI / 2, Math.PI * 1.5); x.closePath();
-      };
-      outline(); x.clip();
-      for (var i = 0; i < 10; i++) {
-        x.globalAlpha = 0.2; x.lineWidth = 2 * RING * (1 - 0.6 * i / 9); outline(); x.stroke();
-      }
-      x.globalAlpha = 1; x.lineWidth = 2 * RING * 0.4; outline(); x.stroke();
-      return 'url(' + c.toDataURL() + ')';
-    } catch (_) { return ''; }
-  }
-
-  /* 量出四块玻璃平时的位置（量的时候先把动画的位移去掉），并把每块玻璃里的那份画面对准外面的画面 */
-  function measureGlass(){
-    var o = origin(), sl = o.x - o.w / 2, st = o.y - o.h / 2, i, olds = [];
-    for (i = 0; i < N; i++) { olds.push(parts[i].style.transform); parts[i].style.transform = 'none'; }
-    var rects = parts.map(function(el){ return el.getBoundingClientRect(); });
-    spots.forEach(function(sp){
-      var q = sp.el.getBoundingClientRect();
-      sp.x0 = q.left; sp.y0 = q.top; sp.x1 = q.right; sp.y1 = q.bottom;
-    });
-    for (i = 0; i < N; i++) parts[i].style.transform = olds[i];
-    var hubR = rects[HUB], hcx = hubR.left + hubR.width / 2, hcy = hubR.top + hubR.height / 2;
-    for (i = 0; i < N; i++) {
-      var r = rects[i];
-      if (!r.width || !r.height) continue;
-      var hx = r.width / 2, hy = r.height / 2, cx = r.left + hx, cy = r.top + hy;
-      rest[i] = { cx: cx, cy: cy, hx: hx, hy: hy };
-      bump[i] = Math.min(0.05, 6 / hx);          /* 按下时鼓起多少：大块玻璃鼓得少一点 */
-      mag[i] = [hx / Math.max(hx - LENS, 6), hy / Math.max(hy - LENS, 6)];
-      var far = Math.hypot(cx - hcx, cy - hcy);  /* 从快门飞出来的方向，飞的时候顺着这个方向被拉长 */
-      dir[i] = far > 1 ? [Math.abs(cx - hcx) / far, Math.abs(cy - hcy) / far] : [0, 0];
-      var w = worlds[i].style;
-      w.left = (sl - r.left) + 'px'; w.top = (st - r.top) + 'px';
-      w.width = o.w + 'px'; w.height = o.h + 'px';
-      w.transformOrigin = (cx - sl) + 'px ' + (cy - st) + 'px';
-      var key = Math.round(r.width) + 'x' + Math.round(r.height);
-      if (key !== maskKey[i]) {
-        maskKey[i] = key;
-        var m = ringMask(r.width, r.height);
-        lenses[i].style.webkitMaskImage = m; lenses[i].style.maskImage = m;
-        /* 高光：一块斜着的明暗渐变，最亮处落在玻璃的左上角，另一道回光落在右下角 */
-        var rr = Math.min(hx, hy), uE = (hx - rr) / Math.SQRT2 + rr, L = 2 * uE;
-        var pad = Math.ceil(0.36 * L), sw = Math.ceil(2 * hx + 2 * pad), shh = Math.ceil(2 * hy + 2 * pad);
-        var mid = (sw + shh) / (2 * Math.SQRT2);
-        var at = function(u){ return (mid + u).toFixed(1) + 'px'; };
-        var sh = shines[i].style;
-        sh.width = sw + 'px'; sh.height = shh + 'px'; sh.margin = (-shh / 2) + 'px 0 0 ' + (-sw / 2) + 'px';
-        sh.background = 'linear-gradient(135deg,' +
-          'rgba(255,255,255,.10) ' + at(-uE - 0.50 * L) + ',' +
-          'rgba(255,255,255,.98) ' + at(-uE - 1) + ',' +
-          'rgba(255,255,255,.42) ' + at(-uE + 0.15 * L) + ',' +
-          'rgba(255,255,255,.14) ' + at(-uE + 0.40 * L) + ',' +
-          'rgba(255,255,255,.10) ' + at(-uE + 0.62 * L) + ',' +
-          'rgba(255,255,255,.36) ' + at(-uE + 0.86 * L) + ',' +
-          'rgba(255,255,255,.82) ' + at(uE + 1) + ',' +
-          'rgba(255,255,255,.10) ' + at(uE + 0.50 * L) + ')';
-        span[i] = L;
-      }
-      drawn[i] = '';
-    }
-    placeParts();
-  }
-  function remeasure(){ box = null; apply(); measureGlass(); }
-
-  /* 把每块玻璃此刻的样子写到页面元素上：位置、大小、透明度、折光强弱、高光滑到哪。
-     玻璃里的那份画面反着动同样多，始终和外面对齐 */
-  function placeParts(){
-    var hub = rest[HUB];
-    if (!hub) return;
-    for (var i = 0; i < N; i++) {
-      var r = rest[i];
-      if (!r) continue;
-      var a = clamp(show[i].v, 0, 1.25), a1 = Math.min(a, 1), p = press[i].v;
-      var dx = (hub.cx - r.cx) * (1 - a), dy = (hub.cy - r.cy) * (1 - a);
-      var s = (0.45 + 0.55 * a) * (1 + bump[i] * p), o = clamp((a - 0.55) / 0.35, 0, 1);
-      /* 飞出来的路上顺着方向被拉长、另一个方向略微收窄，像一滴水 */
-      var g = calm ? 0 : clamp(Math.abs(show[i].vel) * 0.03, 0, 0.2);
-      var sx = s * (1 + g * (dir[i][0] - 0.5 * dir[i][1])), sy = s * (1 + g * (dir[i][1] - 0.5 * dir[i][0]));
-      /* 刚出现时折光更强，慢慢收到平常的样子；按住时玻璃鼓起来，折光也跟着变强 */
-      var k = 1 + 0.6 * (1 - a1) + 0.3 * clamp(p, 0, 1.2);
-      var mx = 1 + (mag[i][0] - 1) * k, my = 1 + (mag[i][1] - 1) * k;
-      /* 高光沿着边缘滑：出现时从远处滑到位，按住时再往里挪一点 */
-      var sweep = (0.10 * p - 0.45 * (1 - a1)) * span[i] / Math.SQRT2;
-      var key = dx.toFixed(2) + ',' + dy.toFixed(2) + ',' + sx.toFixed(4) + ',' + sy.toFixed(4) + ',' +
-                o.toFixed(3) + ',' + mx.toFixed(3) + ',' + sweep.toFixed(1);
-      if (key === drawn[i]) continue;
-      drawn[i] = key;
-      parts[i].style.transform = 'translate3d(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px,0) scale(' + sx.toFixed(4) + ',' + sy.toFixed(4) + ')';
-      parts[i].style.opacity = o.toFixed(3);
-      worlds[i].style.transform = 'scale(' + (1 / sx).toFixed(5) + ',' + (1 / sy).toFixed(5) + ') translate3d(' +
-                                  (-dx).toFixed(2) + 'px,' + (-dy).toFixed(2) + 'px,0) scale(' + mx.toFixed(4) + ',' + my.toFixed(4) + ')';
-      shines[i].style.transform = 'translate3d(' + sweep.toFixed(1) + 'px,' + sweep.toFixed(1) + 'px,0)';
-    }
-  }
-  /* 玻璃里的画面跟着外面一起放大、移动 */
-  function syncClones(){
-    var t = pan.style.transform;
-    for (var i = 0; i < N; i++) pancs[i].style.transform = t;
-  }
-  /* 按钮收起后，玻璃里那几份画面也停下来，不占手机的力气；按钮出现前再接着放 */
-  function clonesPlay(on){
-    clones.forEach(function(c){
-      if (!on) { c.pause(); return; }
-      if (frozen || !c.srcObject) return;
-      var p = c.play(); if (p && p.catch) p.catch(function(){});
-    });
-  }
-
-  function kick(){ if (!raf && !document.hidden) raf = requestAnimationFrame(tick); }
-  function tick(now){
-    raf = 0;
-    var dt = clamp((now - last) / 1000, 0.001, 0.034); last = now;
-    var moving = false, shown = false;
-    for (var i = 0; i < N; i++) {
-      if (calm) { show[i].v = show[i].t; show[i].vel = 0; press[i].v = press[i].t; press[i].vel = 0; }
-      else { show[i].step(dt, 230, 22); press[i].step(dt, 420, 25); }
-      if (show[i].still()) { show[i].v = show[i].t; show[i].vel = 0; } else moving = true;
-      if (press[i].still()) { press[i].v = press[i].t; press[i].vel = 0; } else moving = true;
-      if (show[i].v > 0.003 || show[i].t > 0) shown = true;
-    }
-    placeParts();
-    if (!shown && quiet && bar.style.visibility !== 'hidden') { bar.style.visibility = 'hidden'; clonesPlay(false); }
-    if (moving) kick();                           /* 停稳了就不再每帧运行 */
-  }
-
-  /* ---------- 自动收起 ---------- */
-  var quietTimer = null;
+  /* ================= 按钮：显示与收起 ================= */
+  /* 3.5 秒不碰就淡出；补光开着时按钮不在画面上，就一直留着 */
+  var quiet = true, quietTimer = null;
   function canHide(){ return lampLevel === 0 && $('msg').hidden; }
-  function setShown(on){
-    stagger.forEach(clearTimeout); stagger = [];
-    var order = on ? [[2, 0], [1, 45], [3, 45], [0, 95]] : [[0, 0], [1, 35], [3, 35], [2, 70]];
-    order.forEach(function(o){
-      var id = setTimeout(function(){
-        stagger = stagger.filter(function(x){ return x !== id; });
-        show[o[0]].t = on ? 1 : 0; kick();
-      }, calm ? 0 : o[1]);
-      stagger.push(id);
-    });
-  }
   function wake(){
     clearTimeout(quietTimer);
     quietTimer = setTimeout(sleep, 3500);
     if (!quiet) return;
     quiet = false; body.classList.remove('quiet');
-    bar.style.visibility = 'visible';
-    clonesPlay(true);
-    syncClones();
-    readTones(true);          /* 玻璃出现之前先量好，字一出来颜色就是对的 */
-    tonesOn();
-    setShown(true);
   }
   function sleep(force){
     clearTimeout(quietTimer);
     if (quiet || (force !== true && !canHide())) return;
     quiet = true; body.classList.add('quiet');
-    release(); tonesOff();
-    setShown(false);
   }
-  function partOf(node){
-    for (var i = 0; i < N; i++) if (parts[i].contains(node)) return i;
-    return -1;
-  }
-  function glowAt(i, e){
-    var r = rest[i];
-    if (!r) return;
-    parts[i].style.setProperty('--gx', (e.clientX - (r.cx - r.hx)).toFixed(0) + 'px');
-    parts[i].style.setProperty('--gy', (e.clientY - (r.cy - r.hy)).toFixed(0) + 'px');
-  }
-  function unpress(){
-    if (pressed < 0) return;
-    press[pressed].t = 0; parts[pressed].classList.remove('pressed'); pressed = -1; kick();
-  }
-  /* 手指离开屏幕 */
-  function release(){
-    if (grabbing) {
-      grabbing = false; rail.classList.remove('grab');
-      setTimeout(function(){ readTones(true); }, 140);   /* 放大倍数变了，背后的画面也变了，重新量一次 */
-    }
-    unpress();
-  }
-  bar.addEventListener('pointerdown', function(e){
-    wake();
-    var i = partOf(e.target);
-    if (i < 0) return;
-    unpress();
-    pressed = i; press[i].t = 1; glowAt(i, e); parts[i].classList.add('pressed'); kick();
-  });
-  bar.addEventListener('pointermove', function(e){
-    wake();
-    if (pressed >= 0) glowAt(pressed, e);
-  });
-  ['input', 'click'].forEach(function(t){ bar.addEventListener(t, wake); });
-  window.addEventListener('pointerup', release);
-  window.addEventListener('pointercancel', release);
-
-  /* ---------- 字的颜色跟着背后的画面变 ---------- */
-  /* 按钮显示着、手指没碰着的时候，隔一会儿量一次每块玻璃背后画面的明暗：亮了就把字换成深色，暗了换回白色。
-     只取一张很小的缩略图来量。如果发现这台手机量一次比较费劲，就自动改成很久才量一次。按钮收起后不量 */
-  var PW = 48, PH = 24, toneTimer = null, toneGap = 1200, probe = document.createElement('canvas'), pctx = null;
-  probe.width = PW; probe.height = PH;
-  try { pctx = probe.getContext('2d', { willReadFrequently: true }); } catch (_) {}
-  function toneTick(){
-    toneTimer = null;
-    if (quiet) return;
-    if (pressed < 0 && !grabbing) readTones();
-    toneTimer = setTimeout(toneTick, toneGap);
-  }
-  function tonesOn(){ tonesOff(); toneTimer = setTimeout(toneTick, toneGap); }
-  function tonesOff(){ clearTimeout(toneTimer); toneTimer = null; }
-  function toVideo(x, y){
-    var o = origin(), vw = v.videoWidth, vh = v.videoHeight;
-    var s = Math.max(o.w / vw, o.h / vh);
-    var qx = (x - o.x - tx) / z, qy = (y - o.y - ty) / z;
-    if (mirrored) qx = -qx;
-    return [qx / s + vw / 2, qy / s + vh / 2];
-  }
-  function readTones(now){
-    var vw = v.videoWidth, vh = v.videoHeight;
-    if (!pctx || !vw || v.readyState < 2 || !rest[0] || quiet || lampLevel > 0 || document.hidden) return;
-    if (raf && now !== true) return;              /* 玻璃正在动的那一小会儿不量，免得打断动画 */
-    var x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, i, r;
-    for (i = 0; i < N; i++) {
-      r = rest[i];
-      if (!r) return;
-      x0 = Math.min(x0, r.cx - r.hx); x1 = Math.max(x1, r.cx + r.hx);
-      y0 = Math.min(y0, r.cy - r.hy); y1 = Math.max(y1, r.cy + r.hy);
-    }
-    var a = toVideo(x0, y0), b = toVideo(x1, y1);
-    var sx0 = clamp(Math.min(a[0], b[0]), 0, vw), sx1 = clamp(Math.max(a[0], b[0]), 0, vw);
-    var sy0 = clamp(Math.min(a[1], b[1]), 0, vh), sy1 = clamp(Math.max(a[1], b[1]), 0, vh);
-    var sw = sx1 - sx0, sh = sy1 - sy0, d, t0 = performance.now();
-    if (sw < 0.001 || sh < 0.001) return;
-    try {
-      pctx.drawImage(v, sx0, sy0, sw, sh, 0, 0, PW, PH);
-      d = pctx.getImageData(0, 0, PW, PH).data;
-    } catch (_) { pctx = null; return; }
-    toneGap = performance.now() - t0 > 12 ? 5000 : 1200;
-    /* 一小块区域背后的平均明暗，0 最暗 1 最亮 */
-    var lumaOf = function(ax, ay, bx, by){
-      var p = toVideo(ax, ay), q = toVideo(bx, by);
-      var u0 = clamp(Math.floor((Math.min(p[0], q[0]) - sx0) / sw * PW), 0, PW - 1);
-      var u1 = clamp(Math.ceil((Math.max(p[0], q[0]) - sx0) / sw * PW), u0 + 1, PW);
-      var w0 = clamp(Math.floor((Math.min(p[1], q[1]) - sy0) / sh * PH), 0, PH - 1);
-      var w1 = clamp(Math.ceil((Math.max(p[1], q[1]) - sy0) / sh * PH), w0 + 1, PH);
-      var sum = 0, n = 0;
-      for (var yy = w0; yy < w1; yy++) for (var xx = u0; xx < u1; xx++) {
-        var k = (yy * PW + xx) * 4;
-        sum += 0.299 * d[k] + 0.587 * d[k + 1] + 0.114 * d[k + 2]; n++;
-      }
-      var L = n ? sum / n / 255 : 0;
-      return boostOn ? clamp((Math.min(L * 1.4, 1) - 0.5) * 1.08 + 0.5, 0, 1) : L;
-    };
-    /* 亮于 0.56 换深色字，暗于 0.44 换回白字，中间留一段免得来回跳 */
-    for (i = 0; i < N; i++) {
-      r = rest[i];
-      var Lp = lumaOf(r.cx - r.hx, r.cy - r.hy, r.cx + r.hx, r.cy + r.hy);
-      if (Lp > 0.56) brightOn[i] = true; else if (Lp < 0.44) brightOn[i] = false;
-      parts[i].classList.toggle('bright', brightOn[i]);
-    }
-    spots.forEach(function(sp){
-      var L = lumaOf(sp.x0, sp.y0, sp.x1, sp.y1);
-      if (L > 0.56) sp.on = true; else if (L < 0.44) sp.on = false;
-      sp.el.classList.toggle('ink', sp.on);
-    });
-  }
+  ['pointerdown', 'pointermove', 'input', 'click'].forEach(function(t){ bar.addEventListener(t, wake); });
 
   /* ================= 手势 ================= */
   var pts = new Map(), g = null, tapTimer = null, multi = false;
@@ -782,7 +339,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
       clearTimeout(tapTimer); tapTimer = null;
       var o = origin();
       setZoom(z > 1.05 ? 1 : 3, e.clientX - o.x, e.clientY - o.y, true);
-      used(); haptic();
+      used();
     } else {                              /* 只点了一下：收起或显示按钮 */
       tapTimer = setTimeout(function(){
         tapTimer = null;
@@ -797,33 +354,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
     document.addEventListener(t, function(e){ e.preventDefault(); }, { passive: false });
   });
 
-  /* ---------- 滑杆 ---------- */
-  var lastTick = 0;
-  zoomEl.addEventListener('pointerdown', function(){ grabbing = true; rail.classList.add('grab'); haptic(); });
   zoomEl.addEventListener('input', function(){
-    var s = parseFloat(zoomEl.value), hit = -1;
-    /* 滑到刻度附近轻轻吸住，这样很容易停在整 2 倍、5 倍、10 倍上 */
-    for (var i = 0; i < TICKS.length; i++) if (Math.abs(s - TICKS[i]) < 0.013) { s = TICKS[i]; hit = i; }
-    if (hit !== lastTick) {
-      lastTick = hit;
-      if (hit >= 0) {
-        haptic();
-        zoomOut.classList.remove('snap'); void zoomOut.offsetWidth; zoomOut.classList.add('snap');
-      }
-    }
-    setZoom(Math.exp(s * LOGMAX)); used();
+    setZoom(Math.exp(parseFloat(zoomEl.value) * LOGMAX)); used();
   });
-  /* 图标的小动作：点一下弹一弹，"还原"和"翻转"会转一圈 */
-  var turns = { reset: 0, flip: 0 };
-  function nudge(btn){
-    var svg = btn.querySelector('svg');
-    if (!svg || calm) return;
-    if (btn.id === 'reset') { turns.reset -= 360; svg.style.transform = 'rotate(' + turns.reset + 'deg)'; return; }
-    if (btn.id === 'flip') { turns.flip += 180; svg.style.transform = 'rotate(' + turns.flip + 'deg)'; return; }
-    svg.classList.remove('bump'); void svg.getBoundingClientRect(); svg.classList.add('bump');
-  }
-  $('reset').addEventListener('click', function(){ haptic(); nudge(this); lastTick = 0; setZoom(1, 0, 0, true); });
-  window.addEventListener('resize', remeasure);
+  $('reset').addEventListener('click', function(){ setZoom(1, 0, 0, true); });
+  window.addEventListener('resize', function(){ box = null; apply(); });
 
   /* ================= 摄像头 ================= */
   function stop(){
@@ -849,35 +384,22 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
     $('msg').hidden = false;
     sleep(true);
   }
-  var blink = $('blink');
-  function setFrozen(on, byHand){
+  function setFrozen(on){
     frozen = on;
     $('freeze').setAttribute('aria-pressed', String(on));
     $('freezeLabel').textContent = on ? '继续' : '定格';
-    stateChip.hidden = !on;
-    if (on) {
-      hint.hidden = true;
-      v.pause(); clonesPlay(false);
-      if (byHand && !calm) { blink.classList.remove('go'); void blink.offsetWidth; blink.classList.add('go'); }
-    } else {
-      var p = v.play(); if (p && p.catch) p.catch(function(){});
-      if (!quiet) clonesPlay(true);
-    }
+    $('state').hidden = !on;
+    if (on) { hint.hidden = true; v.pause(); return; }
+    var p = v.play(); if (p && p.catch) p.catch(function(){});
   }
   var settleTimer = null;
   function setLamp(level){
     lampLevel = level;
     body.classList.toggle('lamp', level > 0);
     body.classList.toggle('lamp2', level === 2);
-    /* 镜面正在变大小的这一小会儿，先不显示边缘折光，等它停稳再对齐 */
-    body.classList.add('settling');
     box = null;
     clearTimeout(settleTimer);
-    settleTimer = setTimeout(function(){
-      remeasure();
-      body.classList.remove('settling');
-      readTones(true);
-    }, 320);
+    settleTimer = setTimeout(function(){ box = null; apply(); }, 320);   /* 镜面大小变完了，重新量一次 */
     syncLampButton();
     wake();
   }
@@ -894,6 +416,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
       starting = false; fail('insecure'); return;
     }
     try {
+      /* 向摄像头要它能给的最高画质 */
       stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: { facingMode: facing, width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } }
@@ -905,37 +428,30 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
     track = stream.getVideoTracks()[0];
     var caps = (track.getCapabilities && track.getCapabilities()) || {};
     canTorch = !!caps.torch;
-    mirrored = facing === 'user';
-    [v].concat(clones).forEach(function(el){
-      el.classList.toggle('mirror', mirrored);
-      el.srcObject = stream;
-    });
+    v.classList.toggle('mirror', facing === 'user');
+    v.srcObject = stream;
     setFrozen(false);
     $('flipLabel').textContent = facing === 'user' ? '后置' : '前置';
     if (facing === 'environment' && canTorch && lampLevel) setLamp(0);
     syncLampButton();
     apply();
     keepAwake();
-    measureGlass();
     wake();
     starting = false;
   }
 
   $('retry').addEventListener('click', start);
-  $('freeze').addEventListener('click', function(){ haptic(); setFrozen(!frozen, true); used(); });
+  $('freeze').addEventListener('click', function(){ setFrozen(!frozen); used(); });
   $('flip').addEventListener('click', function(){
-    haptic(); nudge(this);
     facing = facing === 'user' ? 'environment' : 'user';
     start();
   });
   $('boost').addEventListener('click', function(){
-    haptic(); nudge(this);
-    boostOn = body.classList.toggle('boost');
-    this.setAttribute('aria-pressed', String(boostOn));
-    setTimeout(function(){ readTones(true); }, 60);
+    var on = $('boostLayer').hidden;
+    $('boostLayer').hidden = !on;
+    this.setAttribute('aria-pressed', String(on));
   });
   $('lamp').addEventListener('click', function(){
-    haptic(); nudge(this);
     if (facing === 'environment' && canTorch && track) {
       torch = !torch;
       track.applyConstraints({ advanced: [{ torch: torch }] }).catch(function(){ torch = false; syncLampButton(); });
@@ -954,15 +470,13 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
   document.addEventListener('visibilitychange', function(){
     if (document.visibilityState !== 'visible') return;
     keepAwake();
-    kick();
     if (frozen) return;
-    if (!track || track.readyState !== 'live' || track.muted) { start(); return; }
-    if (!quiet) clonesPlay(true);
+    if (!track || track.readyState !== 'live' || track.muted) start();
   });
 
   /* ---------- 体检 ---------- */
   /* 按住右下角的倍数一秒多，屏幕上方会出现一行数字，持续十几秒：摄像头给的画面有多大、每秒实际多少帧、
-     界面每秒多少帧。觉得卡的时候把这行字截图下来，就能知道卡在哪一环。平时不运行，不占力气 */
+     界面每秒多少帧。觉得不清楚或者卡的时候，把这行字截图下来，就能知道问题出在哪一环。平时不运行 */
   var diag = $('diag'), holdTimer = null, dg = null;
   zoomOut.addEventListener('pointerdown', function(){ clearTimeout(holdTimer); holdTimer = setTimeout(startDiag, 1100); });
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(function(t){
@@ -970,7 +484,6 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
   });
   function startDiag(){
     if (dg) return;
-    haptic();
     dg = { ui: 0, cam: 0, t0: null, left: 14 };
     diag.hidden = false; diag.textContent = '正在测量…';
     var hasCb = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
@@ -986,7 +499,6 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
           (st.frameRate ? '（设定每秒 ' + Math.round(st.frameRate) + ' 帧）' : '') +
           ' · 画面' + (frozen ? '已定格' : '实际每秒 ' + (hasCb ? Math.round(dg.cam / sec) : '?') + ' 帧') +
           ' · 界面每秒 ' + Math.round(dg.ui / sec) + ' 帧' +
-          ' · 按钮' + (quiet ? '收起' : '显示') +
           ' · 屏幕 ' + window.innerWidth + '×' + window.innerHeight + '@' + (window.devicePixelRatio || 1) +
           ' · 第 ' + VER + ' 版';
         dg.ui = 0; dg.cam = 0; dg.t0 = now;
@@ -997,7 +509,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
     requestAnimationFrame(onUi);
   }
 
-  /* 有新版本时自己换上：手机发现新版本后页面自动重新载入一次，不用再手动关掉重开两遍 */
+  /* 有新版本时自己换上：手机发现新版本后页面自动重新载入一次 */
   if ('serviceWorker' in navigator) {
     var hadWorker = !!navigator.serviceWorker.controller, reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', function(){
@@ -1015,8 +527,6 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
   }
 
   apply();
-  measureGlass();
-  setTimeout(measureGlass, 600);
   start();
 })();
 </script>

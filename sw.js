@@ -1,5 +1,5 @@
 /* 离线缓存：打开过一次之后，没有网络也能用。每次改了页面，把下面的版本号加一。 */
-const CACHE = 'mirror-v8';
+const CACHE = 'mirror-v9';
 const FILES = ['./', 'index.html', 'icon.png'];
 
 /* 安装新版本时，绕过手机里的旧存货，直接从网上取最新的文件 */
