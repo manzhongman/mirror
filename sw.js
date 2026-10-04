@@ -1,5 +1,5 @@
-/* 离线缓存：打开过一次之后，没有网络也能用。改了页面后把版本号加一。 */
-const CACHE = 'mirror-v1';
+/* 离线缓存：打开过一次之后，没有网络也能用。 */
+const CACHE = 'mirror-v5';
 const FILES = ['./', 'index.html', 'icon.png'];
 
 self.addEventListener('install', (e) => {
@@ -15,21 +15,17 @@ self.addEventListener('activate', (e) => {
   );
 });
 
-/* 先用缓存里的，同时在后台取最新的存起来 */
+/* 立刻用手机里存着的那份打开，不等网络；同时在后台取最新的，下次打开时生效 */
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
-  e.respondWith(
-    caches.match(e.request, { ignoreSearch: true }).then((hit) => {
-      const fresh = fetch(e.request)
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(e.request, copy));
-          }
-          return res;
-        })
-        .catch(() => hit);
-      return hit || fresh;
-    })
-  );
+  e.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    const saved = await cache.match(e.request, { ignoreSearch: true });
+    const fresh = fetch(e.request, { cache: 'no-cache' }).then((res) => {
+      if (res.ok) cache.put(e.request, res.clone());
+      return res;
+    });
+    if (saved) { e.waitUntil(fresh.catch(() => {})); return saved; }
+    return fresh;
+  })());
 });

@@ -8,111 +8,175 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="镜子">
-<meta name="theme-color" content="#0a0e0f">
+<meta name="theme-color" content="#000000">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" href="icon.png">
 <style>
-/* 布局：整屏都是镜面，操作集中在底部一块悬浮面板，单手拇指够得到 */
+/* 布局：整屏都是镜面；按钮是浮在画面上的几块液态玻璃，不用时化开消失，点一下画面再出现 */
 :root{
-  --ink:#0a0e0f;            /* 底色，略偏青的黑 */
-  --panel:rgba(14,20,21,.74);
-  --line:rgba(255,255,255,.14);
-  --fg:#f2f6f5;
-  --dim:#a9b6b3;
-  --mint:#7ff0cf;           /* 开启状态 */
-  --lamp:#fffdf6;           /* 补光时屏幕发出的暖白 */
-  --ui:-apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",sans-serif;
+  --ink:#0a0e0f;            /* 略偏青的黑 */
+  --fg:#f7fbfa;
+  --dim:#c3cfcc;
+  --mint:#7ff0cf;
+  --lamp:#ffffff;           /* 补光用纯白，最亮 */
+  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue",sans-serif;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none}
+html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none;background:#000}
 body{
-  position:fixed;inset:0;background:var(--ink);color:var(--fg);
-  font:15px/1.4 var(--ui);
+  position:fixed;inset:0;color:var(--fg);font:15px/1.4 var(--ui);
   -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;
   -webkit-tap-highlight-color:transparent;
+  /* 玻璃上的字和图标用的颜色，补光时整体换成深色 */
+  --on:var(--fg); --on-inv:var(--ink); --act:var(--mint);
+  --track:rgba(255,255,255,.30);
 }
-#frame{position:absolute;inset:0;background:var(--ink);transition:background .25s}
+body.lamp{ --on:#0a0e0f; --on-inv:#ffffff; --act:#0a7d68; --track:rgba(10,14,15,.16); }
+
+#frame{position:fixed;inset:0;background:#000;transition:background .25s}
 #stage{
   position:absolute;inset:0;overflow:hidden;background:#000;touch-action:none;
   transition:inset .25s,border-radius .25s;
 }
-#pan{position:absolute;inset:0;transform-origin:50% 50%;will-change:transform}
+#pan{position:absolute;inset:0;transform-origin:50% 50%}
 #pan.ease{transition:transform .22s ease-out}
 video{display:block;width:100%;height:100%;object-fit:cover}
 video.mirror{transform:scaleX(-1)}
 .boost video{filter:brightness(1.4) contrast(1.08)}
 
-/* 补光：画面缩小，四周留出一圈白屏照亮脸和口腔 */
+/* 补光：画面缩成一个窗口，其余整块屏幕发白光。强光时窗口更小，白光面积更大 */
 .lamp #frame{background:var(--lamp)}
 .lamp #stage{
-  inset:calc(env(safe-area-inset-top,0px) + 56px) 26px calc(env(safe-area-inset-bottom,0px) + 196px);
-  border-radius:30px;
+  inset:calc(env(safe-area-inset-top,0px) + 64px) 30px calc(env(safe-area-inset-bottom,0px) + 212px);
+  border-radius:34px;
 }
-.lamp #bar,.lamp .chip{background:rgba(14,20,21,.94)}
-.lamp #state{background:var(--mint)}
+.lamp2 #stage{
+  inset:calc(env(safe-area-inset-top,0px) + 20vh) 17vw calc(env(safe-area-inset-bottom,0px) + 36vh);
+  border-radius:40px;
+}
+
+/* ---------- 液态玻璃 ---------- */
+.glass{
+  position:relative;border-radius:999px;color:var(--on);
+  /* 玻璃本体：上亮、中间通透、底部回一点光，再垫一层极淡的暗色保证字看得清 */
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.28) 0%,rgba(255,255,255,.06) 48%,rgba(255,255,255,.13) 100%),
+    rgba(16,22,24,.30);
+  -webkit-backdrop-filter:blur(12px) saturate(190%) brightness(.86);
+  backdrop-filter:blur(12px) saturate(190%) brightness(.86);
+  box-shadow:
+    inset 0 1.5px 1px rgba(255,255,255,.60),          /* 顶部高光 */
+    inset 0 -1px 1px rgba(255,255,255,.16),           /* 底边反光 */
+    inset 0 -12px 16px -12px rgba(255,255,255,.30),   /* 底部透出的柔光 */
+    0 12px 30px rgba(0,0,0,.30),0 2px 6px rgba(0,0,0,.22);
+  text-shadow:0 1px 3px rgba(0,0,0,.5);
+  transition:opacity .35s,transform .45s cubic-bezier(.3,1.45,.5,1);
+}
+/* 一圈边缘光：左上和右下亮，中间暗，像光打在玻璃棱上 */
+.glass::before{
+  content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+  background:linear-gradient(135deg,rgba(255,255,255,.95),rgba(255,255,255,.10) 32%,rgba(255,255,255,.04) 66%,rgba(255,255,255,.65));
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+}
+/* 白光背景上的玻璃：换成浅色的磨砂片 */
+.lamp .glass{
+  background:linear-gradient(180deg,rgba(10,14,15,.03),rgba(10,14,15,.07));
+  -webkit-backdrop-filter:none;backdrop-filter:none;text-shadow:none;
+  box-shadow:inset 0 1.5px 1px #fff,inset 0 0 0 1px rgba(10,14,15,.07),0 8px 20px rgba(10,14,15,.10);
+}
+.lamp .glass::before{display:none}
+
+/* 不用时：玻璃向下化开消失 */
+.quiet .glass{opacity:0;transform:translateY(12px) scale(.95)}
+#bar{transition:visibility 0s}
+.quiet #bar{pointer-events:none;visibility:hidden;transition:visibility 0s .4s}
 
 #top{
   position:absolute;left:16px;right:16px;top:calc(env(safe-area-inset-top,0px) + 12px);
-  display:flex;align-items:center;justify-content:space-between;gap:12px;pointer-events:none;
+  display:flex;align-items:center;justify-content:center;gap:12px;pointer-events:none;
 }
-.chip{
-  background:var(--panel);border:1px solid var(--line);border-radius:999px;
-  padding:6px 12px;font-size:13px;color:var(--fg);
-  -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
-}
-#zoomOut{font-variant-numeric:tabular-nums;font-weight:600;min-width:58px;text-align:center}
-#hint{color:var(--dim);transition:opacity .4s}
+.chip{padding:7px 14px;font-size:13px;letter-spacing:.01em}
+#zoomOut{flex:none;min-width:48px;text-align:right;font:600 15px/1 var(--ui);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+/* 定格的标记是状态不是按钮，按钮收起后它仍然留着 */
+.quiet #state{opacity:1;transform:none}
 #hint.gone{opacity:0}
-#state{color:var(--ink);background:var(--mint);border-color:transparent;font-weight:600}
+#state{color:#06352c;text-shadow:none;font-weight:600;
+  background:linear-gradient(180deg,rgba(255,255,255,.45),rgba(255,255,255,0) 55%),rgba(127,240,207,.86)}
 
 #bar{
-  position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom,0px) + 12px);
-  display:grid;gap:10px;padding:12px 14px 10px;
-  background:var(--panel);border:1px solid var(--line);border-radius:26px;
-  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+  position:absolute;left:14px;right:14px;bottom:calc(env(safe-area-inset-bottom,0px) + 14px);
+  display:grid;gap:12px;
 }
-.zoomrow{display:flex;align-items:center;gap:10px}
-.step{
-  flex:none;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);
-  background:transparent;color:var(--fg);font:300 26px/1 var(--ui);padding:0 0 3px;
+.zoomrow{display:flex;align-items:center;gap:12px;padding:4px 18px 4px 12px}
+.rail{position:relative;flex:1;min-width:0;display:flex}
+/* 刻度：1、2、5、10、20、50、100 倍，像镜头对焦环上的标记 */
+.ticks{position:absolute;inset:0;pointer-events:none}
+.ticks i{
+  position:absolute;top:calc(50% + 9px);left:calc(17px + (100% - 34px) * var(--k));
+  width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:var(--on);opacity:.6;
 }
 input[type=range]{
-  -webkit-appearance:none;appearance:none;flex:1;min-width:0;height:40px;margin:0;background:transparent;
+  -webkit-appearance:none;appearance:none;flex:1;min-width:0;height:42px;margin:0;background:transparent;
+  --t:0;
 }
-input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:rgba(255,255,255,.24)}
+input[type=range]::-webkit-slider-runnable-track{
+  height:5px;border-radius:3px;
+  background:linear-gradient(90deg,var(--on) calc(17px + (100% - 34px) * var(--t)),var(--track) 0);
+}
 input[type=range]::-webkit-slider-thumb{
-  -webkit-appearance:none;width:26px;height:26px;margin-top:-11px;border-radius:50%;
-  background:var(--fg);box-shadow:0 1px 5px rgba(0,0,0,.55);
+  -webkit-appearance:none;width:34px;height:24px;margin-top:-9.5px;border-radius:12px;
+  background:linear-gradient(180deg,#ffffff,#e9efee);
+  box-shadow:inset 0 1px 0 #fff,0 3px 10px rgba(0,0,0,.35),0 0 0 .5px rgba(0,0,0,.12);
 }
-input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:rgba(255,255,255,.24)}
-input[type=range]::-moz-range-thumb{width:26px;height:26px;border:0;border-radius:50%;background:var(--fg)}
+input[type=range]::-moz-range-track{height:5px;border-radius:3px;background:var(--track)}
+input[type=range]::-moz-range-progress{height:5px;border-radius:3px;background:var(--on)}
+input[type=range]::-moz-range-thumb{width:34px;height:24px;border:0;border-radius:12px;background:#fff;box-shadow:0 3px 10px rgba(0,0,0,.35)}
 
-.tools{display:grid;grid-template-columns:repeat(5,1fr);align-items:center;justify-items:center}
+.tools{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
+.group{display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:5px}
 .tool{
-  display:grid;justify-items:center;gap:4px;min-width:56px;padding:6px 2px;
-  border:0;background:transparent;color:var(--fg);font:12px/1.2 var(--ui);
+  display:grid;justify-items:center;gap:3px;min-width:0;padding:8px 2px 7px;
+  border:0;border-radius:999px;background:transparent;
+  color:inherit;text-shadow:inherit;font:500 11.5px/1.2 var(--ui);
+  transition:background .25s,box-shadow .25s,transform .35s cubic-bezier(.3,1.6,.5,1);
 }
-.tool svg{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
-.tool[aria-pressed=true]{color:var(--mint)}
+.tool svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+.lamp .tool svg{filter:none}
+/* 选中的按钮：胶囊里再浮起一小片薄荷色玻璃 */
+.tool[aria-pressed=true]{
+  background:linear-gradient(180deg,rgba(255,255,255,.34),rgba(255,255,255,0) 60%),rgba(127,240,207,.36);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.65),inset 0 0 0 1px rgba(127,240,207,.55),0 3px 10px rgba(0,0,0,.18);
+}
+.lamp .tool[aria-pressed=true]{
+  color:var(--act);background:rgba(10,125,104,.12);
+  box-shadow:inset 0 0 0 1px rgba(10,125,104,.30);
+}
 #freeze{
-  width:68px;height:68px;border-radius:50%;padding:0;
-  border:3px solid var(--fg);background:transparent;color:var(--fg);
-  display:grid;place-items:center;font:600 13px/1 var(--ui);
+  width:76px;height:76px;padding:0;border:0;display:grid;place-items:center;font:600 13px/1 var(--ui);
 }
 #freeze span{
-  display:grid;place-items:center;width:54px;height:54px;border-radius:50%;
-  background:var(--fg);color:var(--ink);transition:background .15s;
+  display:grid;place-items:center;width:58px;height:58px;border-radius:50%;
+  color:var(--on-inv);text-shadow:none;
+  background:linear-gradient(180deg,#ffffff,#e6eceb);
+  box-shadow:inset 0 1px 0 #fff,0 2px 8px rgba(0,0,0,.28);
+  transition:background .2s;
 }
-#freeze[aria-pressed=true] span{background:var(--mint)}
+.lamp #freeze span{background:#0a0e0f;box-shadow:0 2px 8px rgba(10,14,15,.25)}
+#freeze[aria-pressed=true] span{background:linear-gradient(180deg,#b6f8e4,#63dcb9);color:#06352c}
+
 button{touch-action:manipulation;cursor:pointer}
-button:focus-visible,input:focus-visible{outline:2px solid var(--mint);outline-offset:3px}
-button:active{opacity:.6}
+button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-offset:3px}
+/* 按下去：玻璃微微鼓起再弹回 */
+.tool:active{transform:scale(1.12)}
+#freeze:active{transform:scale(.93)}
 
 #msg{
   position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:18px;
-  padding:32px;text-align:center;background:var(--ink);
+  padding:32px;text-align:center;background:var(--ink);color:var(--fg);
 }
 #msg h1{margin:0;font:600 22px/1.3 var(--ui)}
 #msg p{margin:0;max-width:22em;color:var(--dim);line-height:1.7}
@@ -121,45 +185,50 @@ button:active{opacity:.6}
   font:600 16px/1 var(--ui);
 }
 @media (prefers-reduced-motion:reduce){
-  #pan.ease,#stage,#frame,#hint{transition:none}
+  #pan.ease,#stage,#frame,.glass,.tool{transition:none}
 }
 </style>
 </head>
-<body>
+<body class="quiet">
 <div id="frame">
   <div id="stage"><div id="pan"><video id="v" class="mirror" playsinline autoplay muted></video></div></div>
 </div>
 
 <div id="top">
-  <span class="chip" id="hint">双指放大 · 拖动移动 · 双击快速放大</span>
-  <span class="chip" id="state" hidden>已定格</span>
-  <span class="chip" id="zoomOut" aria-live="polite">1.0×</span>
+  <span class="chip glass" id="hint">双指放大 · 拖动移动 · 点一下画面收起按钮</span>
+  <span class="chip glass" id="state" hidden>已定格</span>
 </div>
 
 <div id="bar">
-  <div class="zoomrow">
-    <button class="step" id="minus" type="button" aria-label="缩小">−</button>
-    <input id="zoom" type="range" min="1" max="8" step="0.1" value="1" aria-label="放大倍数">
-    <button class="step" id="plus" type="button" aria-label="放大">+</button>
+  <div class="zoomrow glass">
+    <div class="rail">
+      <div class="ticks" aria-hidden="true"><i style="--k:0"></i><i style="--k:.1505"></i><i style="--k:.3495"></i><i style="--k:.5"></i><i style="--k:.6505"></i><i style="--k:.8495"></i><i style="--k:1"></i></div>
+      <input id="zoom" type="range" min="0" max="1" step="0.001" value="0" aria-label="放大倍数">
+    </div>
+    <output id="zoomOut" for="zoom" aria-live="polite">1.0×</output>
   </div>
   <div class="tools">
-    <button class="tool" id="lamp" type="button" aria-pressed="false">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>
-      <span id="lampLabel">补光</span>
-    </button>
-    <button class="tool" id="boost" type="button" aria-pressed="false">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M12 7.5h6.4M12 12h8.5M12 16.5h6.4"/></svg>
-      <span>提亮</span>
-    </button>
-    <button id="freeze" type="button" aria-pressed="false" aria-label="定格画面"><span id="freezeLabel">定格</span></button>
-    <button class="tool" id="reset" type="button">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5"/></svg>
-      <span>还原</span>
-    </button>
-    <button class="tool" id="flip" type="button">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5h13.5l-3-3M20 15.5H6.5l3 3"/></svg>
-      <span id="flipLabel">后置</span>
-    </button>
+    <div class="group glass">
+      <button class="tool" id="lamp" type="button" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>
+        <span id="lampLabel">补光</span>
+      </button>
+      <button class="tool" id="boost" type="button" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M12 7.5h6.4M12 12h8.5M12 16.5h6.4"/></svg>
+        <span>提亮</span>
+      </button>
+    </div>
+    <button id="freeze" class="glass" type="button" aria-pressed="false" aria-label="定格画面"><span id="freezeLabel">定格</span></button>
+    <div class="group glass">
+      <button class="tool" id="reset" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5"/></svg>
+        <span>还原</span>
+      </button>
+      <button class="tool" id="flip" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8.5h13.5l-3-3M20 15.5H6.5l3 3"/></svg>
+        <span id="flipLabel">后置</span>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -172,26 +241,58 @@ button:active{opacity:.6}
 <script>
 (function(){
   var $ = function(id){ return document.getElementById(id); };
-  var v = $('v'), stage = $('stage'), pan = $('pan');
+  var body = document.body;
+  var v = $('v'), stage = $('stage'), pan = $('pan'), bar = $('bar');
   var zoomEl = $('zoom'), zoomOut = $('zoomOut'), hint = $('hint'), stateChip = $('state');
-  var ZMAX = 8;
+  var ZMAX = 100;                 /* 100 倍时屏幕上只剩十几个像素点，再大没有意义 */
+  var LOGMAX = Math.log(ZMAX);
   var z = 1, tx = 0, ty = 0;
   var facing = 'user', stream = null, track = null;
   var frozen = false, torch = false, canTorch = false, starting = false;
+  var lampLevel = 0;              /* 0 关，1 补光，2 强光 */
+
+  /* ---------- 按钮自动收起 ---------- */
+  var quietTimer = null;
+  function canHide(){ return lampLevel === 0 && $('msg').hidden; }
+  function wake(){
+    body.classList.remove('quiet');
+    clearTimeout(quietTimer);
+    quietTimer = setTimeout(sleep, 3500);
+  }
+  function sleep(){
+    clearTimeout(quietTimer);
+    if (canHide()) body.classList.add('quiet');
+  }
+  ['pointerdown', 'pointermove', 'input', 'click'].forEach(function(t){
+    bar.addEventListener(t, wake);
+  });
 
   /* ---------- 放大与移动 ---------- */
   function clamp(n, lo, hi){ return Math.max(lo, Math.min(hi, n)); }
+  var box = null, painting = 0, shownZoom = '';
+  /* 镜面的位置和大小只在变化时量一次，手指移动时不再反复去量 */
   function origin(){
-    var r = stage.getBoundingClientRect();
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
+    if (!box) {
+      var r = stage.getBoundingClientRect();
+      box = { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height };
+    }
+    return box;
   }
+  function remeasure(){ box = null; apply(); }
+  function paint(){
+    painting = 0;
+    pan.style.transform = 'translate3d(' + tx + 'px,' + ty + 'px,0) scale(' + z + ')';
+    var label = (z < 10 ? z.toFixed(1) : Math.round(z)) + '×';
+    if (label !== shownZoom) { zoomOut.textContent = shownZoom = label; }
+    zoomEl.value = Math.log(z) / LOGMAX;   /* 滑杆按倍数均匀分布：1、3、10、30、100 间隔相等 */
+    zoomEl.style.setProperty('--t', (Math.log(z) / LOGMAX).toFixed(4));   /* 滑杆左边亮起的一段 */
+  }
+  /* 每一帧屏幕最多重画一次，手指动得再快也不会堆积 */
   function apply(){
     var o = origin();
     var mx = o.w * (z - 1) / 2, my = o.h * (z - 1) / 2;
     tx = clamp(tx, -mx, mx); ty = clamp(ty, -my, my);
-    pan.style.transform = 'translate3d(' + tx + 'px,' + ty + 'px,0) scale(' + z + ')';
-    zoomEl.value = z;
-    zoomOut.textContent = z.toFixed(1) + '×';
+    if (!painting) painting = requestAnimationFrame(paint);
   }
   /* 以 (cx,cy) 为中心缩放，坐标相对镜面中心 */
   function setZoom(nz, cx, cy, smooth){
@@ -205,9 +306,14 @@ button:active{opacity:.6}
     }
     apply();
   }
-  function used(){ hint.classList.add('gone'); }
+  /* 提示只在第一次使用时出现 */
+  try { if (localStorage.getItem('mirrorHintSeen')) hint.hidden = true; } catch (_) {}
+  function used(){
+    hint.classList.add('gone');
+    try { localStorage.setItem('mirrorHintSeen', '1'); } catch (_) {}
+  }
 
-  var pts = new Map(), g = null, lastTap = 0;
+  var pts = new Map(), g = null, tapTimer = null;
   function begin(){
     var a = Array.from(pts.values()), o = origin();
     if (a.length === 1) {
@@ -231,14 +337,14 @@ button:active{opacity:.6}
     var a = Array.from(pts.values()), o = origin();
     if (g.n === 1 && a.length === 1) {
       var dx = a[0][0] - g.x, dy = a[0][1] - g.y;
-      if (Math.hypot(dx, dy) > 8) g.moved = true;
+      if (!g.moved && Math.hypot(dx, dy) > 8) { g.moved = true; sleep(); }
       if (g.moved) { tx = g.tx + dx; ty = g.ty + dy; apply(); }
     } else if (g.n === 2 && a.length >= 2) {
       var d = Math.hypot(a[0][0] - a[1][0], a[0][1] - a[1][1]);
       var mx = (a[0][0] + a[1][0]) / 2 - o.x, my = (a[0][1] + a[1][1]) / 2 - o.y;
       var nz = clamp(g.z * d / g.d, 1, ZMAX), k = nz / g.z;
       tx = mx - (g.mx - g.tx) * k; ty = my - (g.my - g.ty) * k; z = nz;
-      apply(); used();
+      apply(); used(); sleep();
     }
   });
   function end(e){
@@ -246,13 +352,17 @@ button:active{opacity:.6}
     var tap = g && g.n === 1 && !g.moved && e.type === 'pointerup';
     pts.delete(e.pointerId);
     begin();
-    if (tap) {
-      var now = Date.now();
-      if (now - lastTap < 320) {
-        var o = origin();
-        setZoom(z > 1.05 ? 1 : 2.5, e.clientX - o.x, e.clientY - o.y, true);
-        used(); lastTap = 0;
-      } else { lastTap = now; }
+    if (!tap) return;
+    if (tapTimer) {                       /* 第二下：双击放大 */
+      clearTimeout(tapTimer); tapTimer = null;
+      var o = origin();
+      setZoom(z > 1.05 ? 1 : 3, e.clientX - o.x, e.clientY - o.y, true);
+      used();
+    } else {                              /* 只点了一下：收起或显示按钮 */
+      tapTimer = setTimeout(function(){
+        tapTimer = null;
+        if (body.classList.contains('quiet')) wake(); else sleep();
+      }, 280);
     }
   }
   stage.addEventListener('pointerup', end);
@@ -262,11 +372,11 @@ button:active{opacity:.6}
     document.addEventListener(t, function(e){ e.preventDefault(); }, { passive: false });
   });
 
-  zoomEl.addEventListener('input', function(){ setZoom(parseFloat(zoomEl.value)); used(); });
-  $('minus').addEventListener('click', function(){ setZoom(z - 0.5, 0, 0, true); used(); });
-  $('plus').addEventListener('click', function(){ setZoom(z + 0.5, 0, 0, true); used(); });
+  zoomEl.addEventListener('input', function(){
+    setZoom(Math.exp(parseFloat(zoomEl.value) * LOGMAX)); used();
+  });
   $('reset').addEventListener('click', function(){ setZoom(1, 0, 0, true); });
-  window.addEventListener('resize', apply);
+  window.addEventListener('resize', remeasure);
 
   /* ---------- 摄像头 ---------- */
   function stop(){
@@ -290,6 +400,7 @@ button:active{opacity:.6}
     $('msgTitle').textContent = t;
     $('msgText').textContent = m;
     $('msg').hidden = false;
+    wake();
   }
   function setFrozen(on){
     frozen = on;
@@ -299,11 +410,19 @@ button:active{opacity:.6}
     if (on) { v.pause(); hint.hidden = true; }
     else { var p = v.play(); if (p && p.catch) p.catch(function(){}); }
   }
+  function setLamp(level){
+    lampLevel = level;
+    body.classList.toggle('lamp', level > 0);
+    body.classList.toggle('lamp2', level === 2);
+    box = null;
+    setTimeout(remeasure, 300);  /* 镜面尺寸变了，重新量一次 */
+    syncLampButton();
+    wake();
+  }
   function syncLampButton(){
     var useTorch = facing === 'environment' && canTorch;
-    $('lampLabel').textContent = useTorch ? '手电' : '补光';
-    var on = useTorch ? torch : document.body.classList.contains('lamp');
-    $('lamp').setAttribute('aria-pressed', String(on));
+    $('lampLabel').textContent = useTorch ? '手电' : (lampLevel === 2 ? '强光' : '补光');
+    $('lamp').setAttribute('aria-pressed', String(useTorch ? torch : lampLevel > 0));
   }
   async function start(){
     if (starting) return;
@@ -328,10 +447,11 @@ button:active{opacity:.6}
     v.srcObject = stream;
     setFrozen(false);
     $('flipLabel').textContent = facing === 'user' ? '后置' : '前置';
-    if (facing === 'environment' && canTorch) document.body.classList.remove('lamp');
+    if (facing === 'environment' && canTorch && lampLevel) setLamp(0);
     syncLampButton();
     apply();
     keepAwake();
+    wake();
     starting = false;
   }
 
@@ -342,25 +462,23 @@ button:active{opacity:.6}
     start();
   });
   $('boost').addEventListener('click', function(){
-    var on = document.body.classList.toggle('boost');
+    var on = body.classList.toggle('boost');
     this.setAttribute('aria-pressed', String(on));
   });
   $('lamp').addEventListener('click', function(){
     if (facing === 'environment' && canTorch && track) {
       torch = !torch;
       track.applyConstraints({ advanced: [{ torch: torch }] }).catch(function(){ torch = false; syncLampButton(); });
+      syncLampButton();
     } else {
-      document.body.classList.toggle('lamp');
-      setTimeout(apply, 280);   /* 镜面尺寸变了，重新限制可拖动范围 */
+      setLamp((lampLevel + 1) % 3);   /* 关 → 补光 → 强光 → 关 */
     }
-    syncLampButton();
   });
 
   /* 屏幕常亮，免得检查到一半自动锁屏 */
-  var lock = null;
   function keepAwake(){
     if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
-    navigator.wakeLock.request('screen').then(function(l){ lock = l; }).catch(function(){});
+    navigator.wakeLock.request('screen').catch(function(){});
   }
   /* 从后台回来时，摄像头常常已被系统停掉，重新打开 */
   document.addEventListener('visibilitychange', function(){
