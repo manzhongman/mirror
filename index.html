@@ -12,7 +12,7 @@
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" href="icon.png">
 <style>
-/* 布局：整屏都是镜面；按钮是浮在画面上的几块透明玻璃，玻璃里的画面是真的被折射过的。
+/* 布局：整屏都是镜面；按钮是浮在画面上的几块透明玻璃。
    不用时玻璃缩回快门里消失，点一下画面再从快门里分出来 */
 :root{
   --ink:#0a0e0f;            /* 略偏青的黑 */
@@ -60,45 +60,46 @@ video.mirror{transform:scaleX(-1)}
 }
 
 /* ---------- 液态玻璃 ---------- */
-/* 画玻璃的画布：把按钮背后的摄像头画面按真实玻璃的折射重新画一遍 */
-#gl{position:absolute;left:0;width:100%;pointer-events:none;display:none}
-.gl #gl{display:block}
-.lamp #gl,.settling #gl{visibility:hidden}
-
-/* 这是备用的玻璃样子：画布用不了、或者补光白底时才看得到 */
+/* 玻璃中间是通透的，直接看到后面的画面。边缘那一圈"折光"是另一份同样的摄像头画面，稍微放大后只露出边上一圈。
+   这些全部交给手机的图形系统去合成，页面自己不逐帧计算，所以不卡。 */
 .glass{
   position:relative;border-radius:999px;
-  color:var(--on);text-shadow:var(--shade);transition:color .3s;
-  background:linear-gradient(180deg,rgba(255,255,255,.20),rgba(255,255,255,.03) 50%,rgba(255,255,255,.09));
-  -webkit-backdrop-filter:blur(4px) saturate(170%);backdrop-filter:blur(4px) saturate(170%);
-  box-shadow:
-    inset 0 1px .5px rgba(255,255,255,.80),
-    inset 0 -1px .5px rgba(255,255,255,.25),
-    0 10px 26px rgba(0,0,0,.18),0 1px 3px rgba(0,0,0,.12);
+  color:var(--on);text-shadow:var(--shade);transition:color .3s,background-color .3s;
+  background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,.02) 46%,rgba(255,255,255,.08));
+  box-shadow:0 10px 26px rgba(0,0,0,.20),0 2px 5px rgba(0,0,0,.14);
 }
+/* 手指按着的地方，玻璃从里面亮起来 */
 .glass::before{
-  content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
-  background:linear-gradient(135deg,rgba(255,255,255,.95),rgba(255,255,255,.12) 32%,rgba(255,255,255,.05) 66%,rgba(255,255,255,.6));
+  content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;opacity:0;transition:opacity .3s;
+  background:radial-gradient(72px circle at var(--gx,50%) var(--gy,50%),rgba(255,255,255,.36),rgba(255,255,255,0) 72%);
+}
+.glass.pressed::before{opacity:1}
+/* 一圈边缘光：左上最亮，右下有一道回光 */
+.glass::after{
+  content:"";position:absolute;inset:0;border-radius:inherit;padding:1.2px;pointer-events:none;
+  background:linear-gradient(140deg,rgba(255,255,255,.96),rgba(255,255,255,.24) 30%,rgba(255,255,255,.10) 62%,rgba(255,255,255,.72));
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
   -webkit-mask-composite:xor;mask-composite:exclude;
 }
-/* 背后画面亮（比如正对着牙齿）：字和图标换成深色，和苹果的玻璃一样会自己变 */
-.glass.ink{
-  --on:#0a0e0f; --track:rgba(10,14,15,.22); --shade:none; --ishade:none;
-  background:linear-gradient(180deg,rgba(255,255,255,.46),rgba(255,255,255,.22));
+/* 边缘折光的那一圈 */
+.lens{
+  position:absolute;inset:0;border-radius:inherit;overflow:hidden;pointer-events:none;
+  -webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
 }
-/* 画布在画玻璃时，元素本身只留下字和图标 */
-.gl:not(.lamp):not(.settling) .glass.live{
-  background:none;-webkit-backdrop-filter:none;backdrop-filter:none;box-shadow:none;
+.lens::after{
+  content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,0) 42%,rgba(255,255,255,.18));
 }
-.gl:not(.lamp):not(.settling) .glass.live::before{display:none}
-/* 白光背景上的玻璃：浅色的薄片 */
+.world{position:absolute}
+.panc{position:absolute;inset:0;transform-origin:50% 50%}
+/* 背后画面亮（比如正对着牙齿）：这块玻璃略微提亮一点 */
+.glass.bright{background-color:rgba(255,255,255,.22)}
+/* 白光背景上的玻璃：浅色的薄片，不需要折光 */
 .lamp .glass{
   background:linear-gradient(180deg,rgba(10,14,15,.02),rgba(10,14,15,.06));
-  -webkit-backdrop-filter:none;backdrop-filter:none;
   box-shadow:inset 0 1.5px 1px #fff,inset 0 0 0 1px rgba(10,14,15,.07),0 8px 20px rgba(10,14,15,.10);
 }
-.lamp .glass::before{display:none}
+.lamp .glass::after,.lamp .lens,.settling .lens{display:none}
 
 #top{
   position:absolute;left:16px;right:16px;top:calc(env(safe-area-inset-top,0px) + 12px);
@@ -115,11 +116,10 @@ video.mirror{transform:scaleX(-1)}
   display:grid;gap:12px;visibility:hidden;
 }
 .quiet #bar{pointer-events:none}
-.live{will-change:transform,opacity}
 
 #zoomrow{display:flex;align-items:center;gap:12px;padding:4px 18px 4px 12px}
-#zoomOut{flex:none;min-width:48px;text-align:right;font:600 15px/1 var(--ui);font-variant-numeric:tabular-nums;letter-spacing:.01em}
-.rail{position:relative;flex:1;min-width:0;display:flex}
+#zoomOut{position:relative;transition:color .3s;flex:none;min-width:48px;text-align:right;font:600 15px/1 var(--ui);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.rail{position:relative;flex:1;min-width:0;display:flex;transition:color .3s}
 /* 刻度：1、2、5、10、20、50、100 倍，像镜头对焦环上的标记 */
 .ticks{position:absolute;inset:0;pointer-events:none}
 .ticks i{
@@ -148,13 +148,15 @@ input[type=range]::-moz-range-thumb{width:36px;height:24px;border:0;border-radiu
 .tools{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
 .group{display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:5px}
 .tool{
-  display:grid;justify-items:center;gap:3px;min-width:0;padding:8px 2px 7px;
+  position:relative;display:grid;justify-items:center;gap:3px;min-width:0;padding:8px 2px 7px;
   border:0;border-radius:999px;background:transparent;
   color:inherit;text-shadow:inherit;font:500 11.5px/1.2 var(--ui);
-  transition:background .25s,box-shadow .25s,transform .3s cubic-bezier(.3,1.6,.5,1);
+  transition:color .3s,background .25s,box-shadow .25s,transform .3s cubic-bezier(.3,1.6,.5,1);
 }
 .tool svg{width:23px;height:23px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;filter:var(--ishade)}
 .tool:active{transform:scale(1.08)}
+/* 背后画面亮的地方，字和图标换成深色，和苹果的玻璃一样会自己变。每个按钮各看各的背后 */
+.ink{ --on:#0a0e0f; --track:rgba(10,14,15,.22); --shade:none; --ishade:none; color:var(--on); text-shadow:none }
 /* 开着的功能：玻璃里再浮起一小片薄荷色玻璃 */
 .tool[aria-pressed=true]{
   background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,.04) 56%),rgba(74,222,184,.66);
@@ -168,7 +170,7 @@ input[type=range]::-moz-range-thumb{width:36px;height:24px;border:0;border-radiu
   width:76px;height:76px;padding:0;border:0;display:grid;place-items:center;font:600 13px/1 var(--ui);
 }
 #freeze span{
-  display:grid;place-items:center;width:58px;height:58px;border-radius:50%;
+  position:relative;display:grid;place-items:center;width:58px;height:58px;border-radius:50%;
   color:#0a0e0f;text-shadow:none;
   background:linear-gradient(180deg,#ffffff,#e9eeed);
   box-shadow:inset 0 1px 0 #fff,0 2px 8px rgba(0,0,0,.25);
@@ -200,7 +202,6 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
 <div id="frame">
   <div id="stage"><div id="pan"><video id="v" class="mirror" playsinline autoplay muted></video></div></div>
 </div>
-<canvas id="gl" aria-hidden="true"></canvas>
 
 <div id="top">
   <span class="chip glass" id="hint">双指放大 · 拖动移动 · 点一下画面收起按钮</span>
@@ -246,149 +247,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--act);outline-of
   <button id="retry" type="button">打开摄像头</button>
 </div>
 
-<!-- 玻璃的画法。每个像素先算自己在哪块玻璃里、离边缘多远，再按玻璃边缘的弧度算光线会被折到哪里，
-     从摄像头画面的那个位置取颜色，最后加上边缘高光和阴影。 -->
-<script type="x-shader/x-fragment" id="fs">
-#ifdef GL_FRAGMENT_PRECISION_HIGH
-precision highp float;
-#else
-precision mediump float;
-#endif
-uniform sampler2D u_tex;
-uniform vec2 u_origin, u_scale, u_px, u_video, u_touch;
-uniform float u_k, u_mirror, u_boost;
-uniform vec4 u_box[4];
-uniform vec4 u_stage;
-uniform vec3 u_view;
-uniform float u_vis[4];
-uniform float u_tone[4];
-uniform float u_press[4];
-
-const float BEZEL = 18.0;    // 玻璃边缘那圈弧面有多宽（像素）
-const float HEIGHT = 14.0;   // 弧面鼓起多高
-const float BASE = 16.0;     // 玻璃底板的厚度
-const float IOR = 1.5;       // 玻璃的折射率
-const float PROF = 2.5;      // 弧面的形状：2 是正圆，越大越接近苹果用的"方圆"
-const float CHROMA = 0.07;   // 边缘的色散（红蓝轻微错开）
-const float BLUR = 1.4;      // 玻璃本身的轻微朦胧
-const float SAT = 1.12;      // 透过玻璃颜色略微更鲜
-const float DIM = 0.30;      // 白字时：只把背后特别亮的地方压一压，暗处不动
-const float LIFT = 0.30;     // 深色字时：只把背后特别暗的地方提一提，亮处不动
-const float VEIL = 0.10;     // 深色字时：整块玻璃再略微提亮一点
-const float BODY = 0.03;     // 玻璃本身极淡的一点存在感，在纯黑背景上也看得出是玻璃
-const float RIM = 0.9;       // 边缘那条细高光
-const float BEVEL = 0.16;    // 弧面受光
-const float SHADOW = 0.26;   // 玻璃的投影
-
-float sdPill(vec2 p, vec4 b){
-  float r = min(b.z, b.w);
-  vec2 w = abs(p - b.xy) - (b.zw - r);
-  return length(max(w, 0.0)) + min(max(w.x, w.y), 0.0) - r;
-}
-// 两块玻璃靠近时像水滴一样融在一起
-float smin(float a, float b, float k){
-  float h = max(k - abs(a - b), 0.0) / k;
-  return min(a, b) - h * h * k * 0.25;
-}
-float field(vec2 p){
-  float k = max(u_k, 0.001);
-  float d = sdPill(p, u_box[0]);
-  d = smin(d, sdPill(p, u_box[1]), k);
-  d = smin(d, sdPill(p, u_box[2]), k);
-  d = smin(d, sdPill(p, u_box[3]), k);
-  return d;
-}
-// 屏幕上的一个点，对应摄像头画面里的哪个点（放大、移动、镜像、铺满屏幕都算进去）
-vec3 video(vec2 ps){
-  vec2 q = (ps - u_stage.xy - u_view.xy) / u_view.z;
-  q.x *= u_mirror;
-  float s = max(u_stage.z / u_video.x, u_stage.w / u_video.y);
-  vec2 uv = (q / s + 0.5 * u_video) / u_video;
-  vec3 c = texture2D(u_tex, uv).rgb;
-  vec3 b = clamp((min(c * 1.4, 1.0) - 0.5) * 1.08 + 0.5, 0.0, 1.0);
-  return mix(c, b, u_boost);
-}
-void main(){
-  vec2 p = u_origin + vec2(gl_FragCoord.x, u_px.y - gl_FragCoord.y) / u_scale;
-  float d = field(p);
-
-  float wsum = 0.0, vis = 0.0, tone = 0.0, prs = 0.0;
-  for (int i = 0; i < 4; i++){
-    float di = sdPill(p, u_box[i]);
-    float w = clamp(1.0 - (di - d) / (u_k + 8.0), 0.0, 1.0);
-    w *= w;
-    wsum += w; vis += w * u_vis[i]; tone += w * u_tone[i]; prs += w * u_press[i];
-  }
-  wsum = max(wsum, 0.0001);
-  vis /= wsum; tone /= wsum; prs /= wsum;
-
-  if (d > 24.0 || vis < 0.002){ gl_FragColor = vec4(0.0); return; }   // 离玻璃很远的地方什么都不画
-
-  float aaw = 0.8 / u_scale.x;
-  float inside = 1.0 - smoothstep(-aaw, aaw, d);
-  float shadow = SHADOW * (1.0 - smoothstep(-5.0, 16.0, field(p - vec2(0.0, 5.0))));
-  vec3 col = vec3(0.0);
-
-  if (inside > 0.0){
-    vec2 g = vec2(field(p + vec2(1.0, 0.0)) - field(p - vec2(1.0, 0.0)),
-                  field(p + vec2(0.0, 1.0)) - field(p - vec2(0.0, 1.0)));
-    vec2 n = g / max(length(g), 0.0001);          // 指向玻璃外面的方向
-    float e = max(-d, 0.0);                       // 离边缘多远
-    float x = clamp(e / BEZEL, 0.0, 1.0), ix = 1.0 - x;
-
-    // 弧面的高度和坡度，再用折射定律算出光线偏了多少
-    float core = max(1.0 - pow(ix, PROF), 0.0001);
-    float prof = pow(core, 1.0 / PROF);
-    float slope = pow(ix, PROF - 1.0) * pow(core, 1.0 / PROF - 1.0);
-    float tanT = min(slope * HEIGHT / BEZEL, 60.0);
-    float inv = inversesqrt(1.0 + tanT * tanT);
-    float sinT = tanT * inv, cosT = inv;
-    float sinR = sinT / IOR, cosR = sqrt(1.0 - sinR * sinR);
-    float dev = (sinT * cosR - cosT * sinR) / (cosT * cosR + sinT * sinR);
-    float disp = (BASE + HEIGHT * prof) * dev;
-    vec2 off = -n * disp;                         // 往玻璃里面偏
-
-    vec2 ps = p + off;
-    vec3 c = video(ps) * 2.0
-           + video(ps + vec2( BLUR,  BLUR)) + video(ps + vec2(-BLUR,  BLUR))
-           + video(ps + vec2( BLUR, -BLUR)) + video(ps + vec2(-BLUR, -BLUR));
-    c /= 6.0;
-    float fr = smoothstep(0.0, 3.0, disp);
-    c.r = mix(c.r, video(p + off * (1.0 + CHROMA)).r, fr);
-    c.b = mix(c.b, video(p + off * (1.0 - CHROMA)).b, fr);
-
-    float l = dot(c, vec3(0.299, 0.587, 0.114));
-    c = mix(vec3(l), c, SAT);
-    vec3 cw = c * (1.0 - DIM * smoothstep(0.35, 0.90, l)) + BODY;
-    vec3 ck = mix(c, vec3(1.0), VEIL + LIFT * (1.0 - smoothstep(0.25, 0.75, l)));
-    c = mix(cw, ck, tone);
-
-    // 光从左上方来：左上的边最亮，右下的边有一道回光
-    vec2 L = normalize(vec2(-0.55, -0.83));
-    float ndl = dot(n, L);
-    float bev = ix * ix;
-    c += bev * BEVEL * max(ndl, 0.0);
-    c *= 1.0 - bev * 0.10 * max(-ndl, 0.0);
-    float rim = 1.0 - smoothstep(0.2, 1.7, e);
-    float spec = 0.14 + 0.86 * pow(max(ndl, 0.0), 1.6) + 0.50 * pow(max(-ndl, 0.0), 2.2);
-    c += rim * spec * RIM;
-
-    // 手指按着的地方，玻璃从里面亮起来
-    vec2 dt = p - u_touch;
-    c += prs * (0.04 + 0.20 * exp(-dot(dt, dt) / 2600.0));
-    col = clamp(c, 0.0, 1.0);
-  }
-  float a = inside + shadow * (1.0 - inside);
-  gl_FragColor = vec4(col * inside, a) * vis;
-}
-</script>
-
 <script>
 (function(){
   'use strict';
   var $ = function(id){ return document.getElementById(id); };
   var body = document.body;
-  var v = $('v'), stage = $('stage'), pan = $('pan'), bar = $('bar'), glc = $('gl');
+  var v = $('v'), stage = $('stage'), pan = $('pan'), bar = $('bar');
   var zoomEl = $('zoom'), zoomOut = $('zoomOut'), hint = $('hint'), stateChip = $('state');
   var ZMAX = 100;                 /* 100 倍时屏幕上只剩十几个像素点，再大没有意义 */
   var LOGMAX = Math.log(ZMAX);
@@ -416,6 +280,7 @@ void main(){
     if (label !== shownZoom) { zoomOut.textContent = shownZoom = label; }
     zoomEl.value = Math.log(z) / LOGMAX;   /* 滑杆按倍数均匀分布：1、3、10、30、100 间隔相等 */
     zoomEl.style.setProperty('--t', (Math.log(z) / LOGMAX).toFixed(4));   /* 滑杆左边亮起的一段 */
+    if (!quiet) syncClones();
   }
   /* 每一帧屏幕最多重画一次，手指动得再快也不会堆积 */
   function apply(){
@@ -456,9 +321,12 @@ void main(){
   }
 
   /* ================= 玻璃按钮 ================= */
-  /* 四块玻璃：滑杆、左边两个按钮、快门、右边两个按钮。出现时都从快门里分出来 */
+  /* 四块玻璃：滑杆、左边两个按钮、快门、右边两个按钮。出现时都从快门的位置分出来。
+     这里只在玻璃出现、收起、被按下的那零点几秒里动一动位置；玻璃停稳之后页面什么都不算，全靠手机自己合成 */
   var parts = [$('zoomrow'), $('groupL'), $('freeze'), $('groupR')];
-  var N = parts.length, HUB = 2, DROP = 20;      /* DROP：还没展开时那一滴玻璃的半径 */
+  var N = parts.length, HUB = 2;
+  var LENS = 10;                  /* 边缘折光：边上那一圈显示的是往里 10 像素处的画面 */
+  var RING = 11;                  /* 折光那一圈有多宽 */
   function Spring(){ this.v = 0; this.vel = 0; this.t = 0; }
   Spring.prototype.step = function(dt, k, c){
     this.vel += (k * (this.t - this.v) - c * this.vel) * dt;
@@ -467,105 +335,121 @@ void main(){
   Spring.prototype.still = function(){
     return Math.abs(this.t - this.v) < 0.002 && Math.abs(this.vel) < 0.02;
   };
-  var show = [], press = [], tone = [], toneT = [], rest = [], bump = [], drawn = [];
-  var boxes = new Float32Array(N * 4), visA = new Float32Array(N), toneA = new Float32Array(N), pressA = new Float32Array(N);
-  for (var i0 = 0; i0 < N; i0++) {
+  var show = [], press = [], rest = [], bump = [], drawn = [], mag = [], maskKey = [];
+  var lenses = [], worlds = [], pancs = [], clones = [];
+  parts.forEach(function(el){
     show.push(new Spring()); press.push(new Spring());
-    tone.push(0); toneT.push(0); rest.push(null); bump.push(0.05); drawn.push('');
-  }
-  var quiet = true, raf = 0, last = 0, stagger = [], pressed = -1, touch = { x: 0, y: 0 };
-  var glTop = 0, glW = 0, glH = 0, bodyX = 0, bodyY = 0;
-  /* 画布的精细程度。手机带不动时自动降一档，实在不行就退回备用样子，保证不卡 */
-  var FINE = [3, 2, 1.5], grade = 0, pace = 16, paced = -60, paceAt = 0, strikes = 0;
+    rest.push(null); bump.push(0.05); drawn.push(''); mag.push([1, 1]); maskKey.push('');
+    /* 每块玻璃里放一份同样的摄像头画面，只在边缘那一圈露出来 */
+    var lens = document.createElement('div'), world = document.createElement('div'), pc = document.createElement('div');
+    var c = document.createElement('video');
+    lens.className = 'lens'; lens.setAttribute('aria-hidden', 'true');
+    world.className = 'world'; pc.className = 'panc';
+    c.muted = true; c.defaultMuted = true; c.autoplay = true; c.playsInline = true; c.tabIndex = -1;
+    c.setAttribute('muted', ''); c.setAttribute('playsinline', ''); c.setAttribute('autoplay', '');
+    c.className = 'mirror';
+    pc.appendChild(c); world.appendChild(pc); lens.appendChild(world);
+    el.insertBefore(lens, el.firstChild);
+    lenses.push(lens); worlds.push(world); pancs.push(pc); clones.push(c);
+  });
+  var quiet = true, raf = 0, last = 0, stagger = [], pressed = -1;
+  /* 字和图标所在的每一小块：滑杆、倍数、四个按钮。各自按背后的明暗决定用白字还是深色字 */
+  var spots = [document.querySelector('#zoomrow .rail'), $('zoomOut'), $('lamp'), $('boost'), $('reset'), $('flip')]
+    .map(function(el){ return { el: el, x0: 0, y0: 0, x1: 0, y1: 0, on: false }; });
+  var brightOn = [false, false, false, false];
 
-  /* 量出四块玻璃平时的位置（量的时候先把动画的位移去掉） */
+  /* 边缘那一圈的形状：贴着玻璃的边，往里逐渐变淡 */
+  function ringMask(w, h){
+    try {
+      var d = Math.min(window.devicePixelRatio || 1, 3), c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(w * d)); c.height = Math.max(1, Math.round(h * d));
+      var x = c.getContext('2d'), r = Math.min(w, h) / 2;
+      x.scale(d, d); x.strokeStyle = '#fff';
+      var outline = function(){
+        x.beginPath(); x.moveTo(r, 0); x.lineTo(w - r, 0); x.arc(w - r, r, r, -Math.PI / 2, Math.PI / 2);
+        x.lineTo(r, h); x.arc(r, r, r, Math.PI / 2, Math.PI * 1.5); x.closePath();
+      };
+      for (var i = 0; i < 10; i++) {
+        x.globalAlpha = 0.2; x.lineWidth = 2 * RING * (1 - 0.6 * i / 9); outline(); x.stroke();
+      }
+      x.globalAlpha = 1; x.lineWidth = 2 * RING * 0.4; outline(); x.stroke();
+      return 'url(' + c.toDataURL() + ')';
+    } catch (_) { return ''; }
+  }
+
+  /* 量出四块玻璃平时的位置（量的时候先把动画的位移去掉），并把每块玻璃里的那份画面对准外面的画面 */
   function measureGlass(){
-    var bb = body.getBoundingClientRect();
-    var top = 1e9;
-    for (var i = 0; i < N; i++) {
-      var el = parts[i], old = el.style.transform;
-      el.style.transform = 'none';
-      var r = el.getBoundingClientRect();
-      el.style.transform = old;
-      rest[i] = { cx: r.left + r.width / 2, cy: r.top + r.height / 2, hx: r.width / 2, hy: r.height / 2 };
-      bump[i] = Math.min(0.05, 6 / Math.max(1, r.width / 2));   /* 按下时鼓起多少：大块玻璃鼓得少一点 */
-      top = Math.min(top, r.top);
+    var o = origin(), sl = o.x - o.w / 2, st = o.y - o.h / 2, i, olds = [];
+    for (i = 0; i < N; i++) { olds.push(parts[i].style.transform); parts[i].style.transform = 'none'; }
+    var rects = parts.map(function(el){ return el.getBoundingClientRect(); });
+    spots.forEach(function(sp){
+      var q = sp.el.getBoundingClientRect();
+      sp.x0 = q.left; sp.y0 = q.top; sp.x1 = q.right; sp.y1 = q.bottom;
+    });
+    for (i = 0; i < N; i++) parts[i].style.transform = olds[i];
+    for (i = 0; i < N; i++) {
+      var r = rects[i];
+      if (!r.width || !r.height) continue;
+      var hx = r.width / 2, hy = r.height / 2;
+      rest[i] = { cx: r.left + hx, cy: r.top + hy, hx: hx, hy: hy };
+      bump[i] = Math.min(0.05, 6 / hx);          /* 按下时鼓起多少：大块玻璃鼓得少一点 */
+      mag[i] = [hx / Math.max(hx - LENS, 6), hy / Math.max(hy - LENS, 6)];
+      var w = worlds[i].style;
+      w.left = (sl - r.left) + 'px'; w.top = (st - r.top) + 'px';
+      w.width = o.w + 'px'; w.height = o.h + 'px';
+      w.transformOrigin = (r.left + hx - sl) + 'px ' + (r.top + hy - st) + 'px';
+      var key = Math.round(r.width) + 'x' + Math.round(r.height);
+      if (key !== maskKey[i]) {
+        maskKey[i] = key;
+        var m = ringMask(r.width, r.height);
+        lenses[i].style.webkitMaskImage = m; lenses[i].style.maskImage = m;
+      }
       drawn[i] = '';
     }
-    /* 画布盖住按钮这一带，上面多留一点给阴影和鼓起来的部分 */
-    var dpr = Math.min(window.devicePixelRatio || 1, FINE[grade]);
-    glTop = Math.max(0, Math.floor(top - bb.top - 36));
-    glW = bb.width; glH = Math.max(1, bb.height - glTop);
-    bodyX = bb.left; bodyY = bb.top;
-    glc.style.top = glTop + 'px'; glc.style.height = glH + 'px';
-    var pw = Math.max(1, Math.round(glW * dpr)), ph = Math.max(1, Math.round(glH * dpr));
-    if (glc.width !== pw || glc.height !== ph) { glc.width = pw; glc.height = ph; }
-    kick();
+    placeParts();
   }
   function remeasure(){ box = null; apply(); measureGlass(); }
 
-  /* 把每块玻璃此刻的位置、大小、透明度写到页面元素上，同时记下来给画布用 */
+  /* 把每块玻璃此刻的位置、大小、透明度写到页面元素上；玻璃里的画面反着动同样多，始终和外面对齐 */
   function placeParts(){
     var hub = rest[HUB];
     if (!hub) return;
     for (var i = 0; i < N; i++) {
-      var r = rest[i], a = clamp(show[i].v, 0, 1.25), p = press[i].v;
-      var grow = 1 + bump[i] * p;
+      var r = rest[i];
+      if (!r) continue;
+      var a = clamp(show[i].v, 0, 1.25), p = press[i].v;
       var dx = (hub.cx - r.cx) * (1 - a), dy = (hub.cy - r.cy) * (1 - a);
-      var s = (0.45 + 0.55 * a) * grow, o = clamp((a - 0.55) / 0.35, 0, 1);
-      var css = 'translate3d(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px,0) scale(' + s.toFixed(4) + ')';
-      var key = css + o.toFixed(3);
-      if (key !== drawn[i]) {
-        drawn[i] = key;
-        parts[i].style.transform = css;
-        parts[i].style.opacity = o.toFixed(3);
-      }
-      boxes[i * 4] = r.cx + dx; boxes[i * 4 + 1] = r.cy + dy;
-      boxes[i * 4 + 2] = (DROP + (r.hx - DROP) * a) * grow;
-      boxes[i * 4 + 3] = (DROP + (r.hy - DROP) * a) * grow;
-      visA[i] = clamp(a / 0.3, 0, 1); toneA[i] = tone[i]; pressA[i] = clamp(p, 0, 1.3);
+      var s = (0.45 + 0.55 * a) * (1 + bump[i] * p), o = clamp((a - 0.55) / 0.35, 0, 1);
+      var key = dx.toFixed(2) + ',' + dy.toFixed(2) + ',' + s.toFixed(4) + ',' + o.toFixed(3);
+      if (key === drawn[i]) continue;
+      drawn[i] = key;
+      parts[i].style.transform = 'translate3d(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px,0) scale(' + s.toFixed(4) + ')';
+      parts[i].style.opacity = o.toFixed(3);
+      worlds[i].style.transform = 'scale(' + (1 / s).toFixed(5) + ') translate3d(' + (-dx).toFixed(2) + 'px,' + (-dy).toFixed(2) + 'px,0) scale(' +
+                                  mag[i][0].toFixed(4) + ',' + mag[i][1].toFixed(4) + ')';
     }
+  }
+  /* 玻璃里的画面跟着外面一起放大、移动 */
+  function syncClones(){
+    var t = pan.style.transform;
+    for (var i = 0; i < N; i++) pancs[i].style.transform = t;
   }
 
   function kick(){ if (!raf && !document.hidden) raf = requestAnimationFrame(tick); }
   function tick(now){
     raf = 0;
     var dt = clamp((now - last) / 1000, 0.001, 0.034); last = now;
-    var moving = false, shown = false, sum = 0;
+    var moving = false, shown = false;
     for (var i = 0; i < N; i++) {
       if (calm) { show[i].v = show[i].t; show[i].vel = 0; press[i].v = press[i].t; press[i].vel = 0; }
       else { show[i].step(dt, 230, 22); press[i].step(dt, 420, 25); }
       if (show[i].still()) { show[i].v = show[i].t; show[i].vel = 0; } else moving = true;
       if (press[i].still()) { press[i].v = press[i].t; press[i].vel = 0; } else moving = true;
-      var dT = toneT[i] - tone[i];
-      if (Math.abs(dT) > 0.004) { tone[i] += dT * Math.min(1, dt * 9); moving = true; } else tone[i] = toneT[i];
       if (show[i].v > 0.003 || show[i].t > 0) shown = true;
-      sum += clamp(show[i].v, 0, 1);
     }
     placeParts();
-    var watching = shown && lampLevel === 0;       /* 玻璃在画面上：要跟着画面一直重画 */
-    if (watching) {
-      if (now - lumaAt > 260) { lumaAt = now; readTones(); }
-      if (glReady) { drawGlass(now, 34 * (1 - sum / N)); keepPace(now); }
-    } else if (glReady && glDirty) { clearGlass(); }
     if (!shown && quiet) bar.style.visibility = 'hidden';
-    if (moving || watching || stagger.length) kick();
-  }
-
-  /* 量一量画玻璃时每一帧花多久：连续两段（约三秒）都低于每秒 40 帧，就降一档精细度。
-     刚开始那一秒摄像头还在启动，不算数 */
-  function keepPace(now){
-    var gap = now - paceAt; paceAt = now;
-    if (gap <= 0 || gap > 250) return;            /* 刚开始画，或者中间停过，不算 */
-    if (++paced <= 0) return;
-    pace += (gap - pace) * 0.08;
-    if (paced < 90) return;
-    paced = 0;
-    strikes = pace > (grade === 0 ? 25 : 45) ? strikes + 1 : 0;
-    if (strikes < 2) return;
-    strikes = 0; pace = 16; paced = -30; grade++;
-    if (grade >= FINE.length) { grade = FINE.length - 1; glGaveUp = true; glFail(); }
-    else measureGlass();
+    if (moving) kick();                           /* 停稳了就不再每帧运行 */
   }
 
   /* ---------- 自动收起 ---------- */
@@ -581,7 +465,6 @@ void main(){
       }, calm ? 0 : o[1]);
       stagger.push(id);
     });
-    kick();
   }
   function wake(){
     clearTimeout(quietTimer);
@@ -589,43 +472,55 @@ void main(){
     if (!quiet) return;
     quiet = false; body.classList.remove('quiet');
     bar.style.visibility = 'visible';
-    forceUpload = true;
+    syncClones();
+    readTones(true);          /* 玻璃出现之前先量好，字一出来颜色就是对的 */
+    tonesOn();
     setShown(true);
   }
   function sleep(force){
     clearTimeout(quietTimer);
     if (quiet || (force !== true && !canHide())) return;
     quiet = true; body.classList.add('quiet');
-    release();
+    release(); tonesOff();
     setShown(false);
   }
   function partOf(node){
     for (var i = 0; i < N; i++) if (parts[i].contains(node)) return i;
     return -1;
   }
+  function glowAt(i, e){
+    var r = rest[i];
+    if (!r) return;
+    parts[i].style.setProperty('--gx', (e.clientX - (r.cx - r.hx)).toFixed(0) + 'px');
+    parts[i].style.setProperty('--gy', (e.clientY - (r.cy - r.hy)).toFixed(0) + 'px');
+  }
   function release(){
-    if (pressed >= 0) { press[pressed].t = 0; pressed = -1; kick(); }
+    if (pressed < 0) return;
+    press[pressed].t = 0; parts[pressed].classList.remove('pressed'); pressed = -1; kick();
   }
   bar.addEventListener('pointerdown', function(e){
     wake();
     var i = partOf(e.target);
     if (i < 0) return;
     release();
-    pressed = i; press[i].t = 1; touch.x = e.clientX; touch.y = e.clientY; kick();
+    pressed = i; press[i].t = 1; glowAt(i, e); parts[i].classList.add('pressed'); kick();
   });
   bar.addEventListener('pointermove', function(e){
     wake();
-    if (pressed >= 0) { touch.x = e.clientX; touch.y = e.clientY; }
+    if (pressed >= 0) glowAt(pressed, e);
   });
   ['input', 'click'].forEach(function(t){ bar.addEventListener(t, wake); });
   window.addEventListener('pointerup', release);
   window.addEventListener('pointercancel', release);
 
   /* ---------- 字的颜色跟着背后的画面变 ---------- */
-  /* 每隔四分之一秒，量一下每块玻璃背后画面的明暗：亮了就把字换成深色，暗了换回白色 */
-  var PW = 48, PH = 24, lumaAt = 0, probe = document.createElement('canvas'), pctx = null;
+  /* 按钮显示着的时候，每秒量一次每块玻璃背后画面的明暗：亮了就把字换成深色，暗了换回白色。
+     只取一张很小的缩略图来量，按钮收起后就不量了 */
+  var PW = 48, PH = 24, toneTimer = null, probe = document.createElement('canvas'), pctx = null;
   probe.width = PW; probe.height = PH;
-  try { pctx = probe.getContext('2d'); } catch (_) {}
+  try { pctx = probe.getContext('2d', { willReadFrequently: true }); } catch (_) {}
+  function tonesOn(){ tonesOff(); toneTimer = setInterval(readTones, 1000); }
+  function tonesOff(){ clearInterval(toneTimer); toneTimer = null; }
   function toVideo(x, y){
     var o = origin(), vw = v.videoWidth, vh = v.videoHeight;
     var s = Math.max(o.w / vw, o.h / vh);
@@ -633,12 +528,14 @@ void main(){
     if (mirrored) qx = -qx;
     return [qx / s + vw / 2, qy / s + vh / 2];
   }
-  function readTones(){
+  function readTones(now){
     var vw = v.videoWidth, vh = v.videoHeight;
-    if (!pctx || !vw || v.readyState < 2 || !rest[0]) return;
+    if (!pctx || !vw || v.readyState < 2 || !rest[0] || quiet || lampLevel > 0 || document.hidden) return;
+    if (raf && now !== true) return;              /* 玻璃正在动的那一小会儿不量，免得打断动画 */
     var x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, i, r;
     for (i = 0; i < N; i++) {
       r = rest[i];
+      if (!r) return;
       x0 = Math.min(x0, r.cx - r.hx); x1 = Math.max(x1, r.cx + r.hx);
       y0 = Math.min(y0, r.cy - r.hy); y1 = Math.max(y1, r.cy + r.hy);
     }
@@ -651,9 +548,9 @@ void main(){
       pctx.drawImage(v, sx0, sy0, sw, sh, 0, 0, PW, PH);
       d = pctx.getImageData(0, 0, PW, PH).data;
     } catch (_) { pctx = null; return; }
-    for (i = 0; i < N; i++) {
-      r = rest[i];
-      var p = toVideo(r.cx - r.hx, r.cy - r.hy), q = toVideo(r.cx + r.hx, r.cy + r.hy);
+    /* 一小块区域背后的平均明暗，0 最暗 1 最亮 */
+    var lumaOf = function(ax, ay, bx, by){
+      var p = toVideo(ax, ay), q = toVideo(bx, by);
       var u0 = clamp(Math.floor((Math.min(p[0], q[0]) - sx0) / sw * PW), 0, PW - 1);
       var u1 = clamp(Math.ceil((Math.max(p[0], q[0]) - sx0) / sw * PW), u0 + 1, PW);
       var w0 = clamp(Math.floor((Math.min(p[1], q[1]) - sy0) / sh * PH), 0, PH - 1);
@@ -664,140 +561,21 @@ void main(){
         sum += 0.299 * d[k] + 0.587 * d[k + 1] + 0.114 * d[k + 2]; n++;
       }
       var L = n ? sum / n / 255 : 0;
-      if (boostOn) L = clamp((Math.min(L * 1.4, 1) - 0.5) * 1.08 + 0.5, 0, 1);
-      if (L > 0.56) toneT[i] = 1; else if (L < 0.44) toneT[i] = 0;     /* 中间留一段，免得来回跳 */
-      parts[i].classList.toggle('ink', toneT[i] === 1);
+      return boostOn ? clamp((Math.min(L * 1.4, 1) - 0.5) * 1.08 + 0.5, 0, 1) : L;
+    };
+    /* 亮于 0.56 换深色字，暗于 0.44 换回白字，中间留一段免得来回跳 */
+    for (i = 0; i < N; i++) {
+      r = rest[i];
+      var Lp = lumaOf(r.cx - r.hx, r.cy - r.hy, r.cx + r.hx, r.cy + r.hy);
+      if (Lp > 0.56) brightOn[i] = true; else if (Lp < 0.44) brightOn[i] = false;
+      parts[i].classList.toggle('bright', brightOn[i]);
     }
+    spots.forEach(function(sp){
+      var L = lumaOf(sp.x0, sp.y0, sp.x1, sp.y1);
+      if (L > 0.56) sp.on = true; else if (L < 0.44) sp.on = false;
+      sp.el.classList.toggle('ink', sp.on);
+    });
   }
-
-  /* ---------- 画布：真正的折射 ---------- */
-  var gl = null, glReady = false, glDirty = false, glGaveUp = false, U = {}, tex = null;
-  var texW = 2, texH = 2, forceUpload = true, frameNew = true, frameAt = 0, due = 0, uploads = 0, checks = 0, checkAt = 0;
-  var hasFrameCb = 'requestVideoFrameCallback' in HTMLVideoElement.prototype;
-  var UNI = ['u_tex', 'u_origin', 'u_scale', 'u_px', 'u_video', 'u_touch', 'u_k', 'u_mirror', 'u_boost',
-             'u_box', 'u_stage', 'u_view', 'u_vis', 'u_tone', 'u_press'];
-  function compile(type, src){
-    var s = gl.createShader(type);
-    gl.shaderSource(s, src); gl.compileShader(s);
-    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || 'shader');
-    return s;
-  }
-  function initGL(){
-    try {
-      gl = glc.getContext('webgl', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false,
-                                     stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
-      if (!gl) return false;
-      var prog = gl.createProgram();
-      gl.attachShader(prog, compile(gl.VERTEX_SHADER, 'attribute vec2 a;void main(){gl_Position=vec4(a,0.0,1.0);}'));
-      /* 着色器里的中文注释只给人看，交给显卡之前先去掉 */
-      gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, $('fs').textContent.replace(/\/\/[^\n]*/g, '')));
-      gl.linkProgram(prog);
-      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) return false;
-      gl.useProgram(prog);
-      gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
-      var loc = gl.getAttribLocation(prog, 'a');
-      gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
-      tex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 255]));
-      texW = texH = 2;
-      UNI.forEach(function(n){ U[n] = gl.getUniformLocation(prog, n); });
-      gl.uniform1i(U.u_tex, 0);
-      gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
-      gl.clearColor(0, 0, 0, 0);
-      forceUpload = true; uploads = 0; checks = 0;
-      return true;
-    } catch (_) { return false; }
-  }
-  /* 画布出了问题就退回备用的玻璃样子，按钮照常能用 */
-  function glFail(){
-    glReady = false; body.classList.remove('gl');
-  }
-  function clearGlass(){
-    try { gl.viewport(0, 0, glc.width, glc.height); gl.clear(gl.COLOR_BUFFER_BIT); } catch (_) {}
-    glDirty = false;
-  }
-  function onFrame(now){
-    frameNew = true; frameAt = now || performance.now();
-    v.requestVideoFrameCallback(onFrame);
-  }
-  if (hasFrameCb) v.requestVideoFrameCallback(onFrame);
-
-  /* 把摄像头此刻的画面取进画布 */
-  function grab(){
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, v);
-    texW = v.videoWidth; texH = v.videoHeight;
-    frameNew = false; forceUpload = false; uploads++;
-  }
-  function drawGlass(now, k){
-    var g = gl;
-    try {
-      if (v.readyState >= 2 && v.videoWidth) {
-        /* 只有摄像头出了新画面才重新取一次；万一系统不通知新画面，就每次都取。
-           降过档的手机隔一两帧才取一次，省力气。定格时画面不会变，不再取（定格那一刻已经取好了） */
-        var silent = hasFrameCb && now - frameAt > 400;
-        if (frameNew || !hasFrameCb || silent) { frameNew = false; due++; }
-        if ((forceUpload || due > grade) && (!v.paused || uploads === 0)) {
-          grab(); due = 0;
-          if (uploads === 3) checkAt = now;
-        }
-      }
-      var o = origin();
-      g.viewport(0, 0, glc.width, glc.height);
-      g.uniform2f(U.u_origin, bodyX, bodyY + glTop);
-      g.uniform2f(U.u_scale, glc.width / glW, glc.height / glH);
-      g.uniform2f(U.u_px, glc.width, glc.height);
-      g.uniform2f(U.u_video, texW, texH);
-      g.uniform2f(U.u_touch, touch.x, touch.y);
-      g.uniform1f(U.u_k, k);
-      g.uniform1f(U.u_mirror, mirrored ? -1 : 1);
-      g.uniform1f(U.u_boost, boostOn ? 1 : 0);
-      g.uniform4fv(U.u_box, boxes);
-      g.uniform4f(U.u_stage, o.x, o.y, o.w, o.h);
-      g.uniform3f(U.u_view, tx, ty, z);
-      g.uniform1fv(U.u_vis, visA);
-      g.uniform1fv(U.u_tone, toneA);
-      g.uniform1fv(U.u_press, pressA);
-      g.drawArrays(g.TRIANGLES, 0, 3);
-      glDirty = true;
-      if (uploads >= 3 && checks < 2 && now >= checkAt) { checks++; checkAt = now + 1500; verifyGL(); }
-    } catch (_) { glFail(); }
-  }
-  /* 开头检查两次：摄像头明明有画面，画布拿到的却是全黑，说明这台手机上这条路走不通，退回备用样子 */
-  function verifyGL(){
-    try {
-      var g = gl, fb = g.createFramebuffer(), px, got = 0, ok;
-      g.bindFramebuffer(g.FRAMEBUFFER, fb);
-      g.framebufferTexture2D(g.FRAMEBUFFER, g.COLOR_ATTACHMENT0, g.TEXTURE_2D, tex, 0);
-      ok = g.checkFramebufferStatus(g.FRAMEBUFFER) === g.FRAMEBUFFER_COMPLETE;
-      if (ok) {                                   /* 横着读三整行，算平均亮度 */
-        px = new Uint8Array(texW * 4);
-        for (var j = 1; j <= 3; j++) {
-          g.readPixels(0, Math.floor(texH * j / 4), texW, 1, g.RGBA, g.UNSIGNED_BYTE, px);
-          for (var i = 0; i < px.length; i += 4) got += px[i] + px[i + 1] + px[i + 2];
-        }
-        got /= texW * 9;
-      }
-      g.bindFramebuffer(g.FRAMEBUFFER, null); g.deleteFramebuffer(fb);
-      if (!ok || !pctx) return;
-      pctx.drawImage(v, 0, 0, 8, 8);
-      var d = pctx.getImageData(0, 0, 8, 8).data, ref = 0;
-      for (var k = 0; k < d.length; k += 4) ref += d[k] + d[k + 1] + d[k + 2];
-      if (ref / 192 > 24 && got < 2) { glGaveUp = true; glFail(); }
-    } catch (_) {}
-  }
-  glc.addEventListener('webglcontextlost', function(e){ e.preventDefault(); glFail(); kick(); });
-  glc.addEventListener('webglcontextrestored', function(){
-    if (glGaveUp) return;
-    glReady = initGL(); body.classList.toggle('gl', glReady); kick();
-  });
-  glReady = initGL();
-  body.classList.toggle('gl', glReady);
 
   /* ================= 手势 ================= */
   var pts = new Map(), g = null, tapTimer = null, multi = false;
@@ -896,15 +674,11 @@ void main(){
     $('freeze').setAttribute('aria-pressed', String(on));
     $('freezeLabel').textContent = on ? '继续' : '定格';
     stateChip.hidden = !on;
-    if (on) {
-      /* 先把这一刻的画面取进画布，再定住，玻璃里外就是同一帧 */
-      if (glReady && v.readyState >= 2 && v.videoWidth) { try { grab(); } catch (_) {} }
-      v.pause(); hint.hidden = true;
-    } else {
-      var p = v.play(); if (p && p.catch) p.catch(function(){});
-      forceUpload = true;
-    }
-    kick();
+    if (on) { hint.hidden = true; }
+    [v].concat(clones).forEach(function(el){
+      if (on) { el.pause(); return; }
+      var p = el.play(); if (p && p.catch) p.catch(function(){});
+    });
   }
   var settleTimer = null;
   function setLamp(level){
@@ -916,11 +690,11 @@ void main(){
     box = null;
     clearTimeout(settleTimer);
     settleTimer = setTimeout(function(){
-      remeasure(); forceUpload = true;
-      body.classList.remove('settling'); kick();
+      remeasure();
+      body.classList.remove('settling');
     }, 320);
     syncLampButton();
-    wake(); kick();
+    wake();
   }
   function syncLampButton(){
     var useTorch = facing === 'environment' && canTorch;
@@ -947,8 +721,10 @@ void main(){
     var caps = (track.getCapabilities && track.getCapabilities()) || {};
     canTorch = !!caps.torch;
     mirrored = facing === 'user';
-    v.classList.toggle('mirror', mirrored);
-    v.srcObject = stream;
+    [v].concat(clones).forEach(function(el){
+      el.classList.toggle('mirror', mirrored);
+      el.srcObject = stream;
+    });
     setFrozen(false);
     $('flipLabel').textContent = facing === 'user' ? '后置' : '前置';
     if (facing === 'environment' && canTorch && lampLevel) setLamp(0);
@@ -969,7 +745,7 @@ void main(){
   $('boost').addEventListener('click', function(){
     boostOn = body.classList.toggle('boost');
     this.setAttribute('aria-pressed', String(boostOn));
-    lumaAt = 0; kick();
+    setTimeout(function(){ readTones(true); }, 60);
   });
   $('lamp').addEventListener('click', function(){
     if (facing === 'environment' && canTorch && track) {
@@ -990,7 +766,7 @@ void main(){
   document.addEventListener('visibilitychange', function(){
     if (document.visibilityState !== 'visible') return;
     keepAwake();
-    forceUpload = true; kick();
+    kick();
     if (frozen) return;
     if (!track || track.readyState !== 'live' || track.muted) start();
   });
